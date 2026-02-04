@@ -221,6 +221,9 @@ final class TermuxInstaller {
                     // Recreate env file since termux prefix was wiped earlier
                     TermuxShellEnvironment.writeEnvironmentToFile(activity);
 
+                    // Create Owlia first-run setup script
+                    createOwliaFirstRunScript();
+
                     activity.runOnUiThread(whenDone);
 
                 } catch (final Exception e) {
@@ -382,5 +385,62 @@ final class TermuxInstaller {
     }
 
     public static native byte[] getZip();
+
+    /**
+     * Creates the Owlia first-run setup script that will be executed on first terminal session.
+     * This script enables wake lock, installs OpenClaw, and displays a welcome message.
+     */
+    private static void createOwliaFirstRunScript() {
+        try {
+            // Create the profile.d directory if it doesn't exist
+            File profileDir = new File(TERMUX_PREFIX_DIR_PATH + "/etc/profile.d");
+            if (!profileDir.exists()) {
+                profileDir.mkdirs();
+            }
+
+            // Create the first-run script in profile.d (sourced by login shells)
+            File firstRunScript = new File(profileDir, "owlia-first-run.sh");
+            String scriptContent =
+                "# Owlia first-run setup script\n" +
+                "# This script runs once on first terminal session after bootstrap installation\n\n" +
+                "OWLIA_FIRST_RUN_MARKER=\"$HOME/.owlia_first_run_done\"\n\n" +
+                "if [ ! -f \"$OWLIA_FIRST_RUN_MARKER\" ]; then\n" +
+                "    echo \"🦉 Welcome to Owlia!\"\n" +
+                "    echo \"\"\n" +
+                "    echo \"Setting up your environment...\"\n" +
+                "    echo \"\"\n\n" +
+                "    # Enable wake lock to prevent Android from killing the process\n" +
+                "    if command -v termux-wake-lock >/dev/null 2>&1; then\n" +
+                "        termux-wake-lock\n" +
+                "        echo \"✓ Wake lock enabled\"\n" +
+                "    fi\n\n" +
+                "    # Install OpenClaw\n" +
+                "    echo \"Installing OpenClaw...\"\n" +
+                "    if command -v npm >/dev/null 2>&1; then\n" +
+                "        npm install -g openclaw@latest --ignore-scripts && echo \"✓ OpenClaw installed successfully\" || echo \"✗ OpenClaw installation failed\"\n" +
+                "    else\n" +
+                "        echo \"⚠ npm not found. Install Node.js first: pkg install nodejs\"\n" +
+                "    fi\n\n" +
+                "    # Mark first run as complete\n" +
+                "    touch \"$OWLIA_FIRST_RUN_MARKER\"\n" +
+                "    echo \"\"\n" +
+                "    echo \"🦉 Setup complete! Run 'openclaw' to get started.\"\n" +
+                "    echo \"\"\n" +
+                "fi\n";
+
+            try (FileOutputStream fos = new FileOutputStream(firstRunScript)) {
+                fos.write(scriptContent.getBytes());
+            }
+
+            // Make the script executable
+            //noinspection OctalInteger
+            Os.chmod(firstRunScript.getAbsolutePath(), 0755);
+
+            Logger.logInfo(LOG_TAG, "Created Owlia first-run script at " + firstRunScript.getAbsolutePath());
+
+        } catch (Exception e) {
+            Logger.logStackTraceWithMessage(LOG_TAG, "Failed to create Owlia first-run script", e);
+        }
+    }
 
 }
