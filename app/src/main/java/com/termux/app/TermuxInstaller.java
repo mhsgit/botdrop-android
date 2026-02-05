@@ -418,59 +418,42 @@ final class TermuxInstaller {
             File firstRunScript = new File(profileDir, "owlia-first-run.sh");
             String scriptContent =
                 "# Owlia first-run setup script\n" +
-                "# This script runs once on first terminal session after bootstrap installation\n\n" +
+                "# Bootstrap already has: node, npm, git, openssh, proot, termux-api\n" +
+                "# This script only: fixes permissions, installs OpenClaw, done.\n\n" +
                 "OWLIA_FIRST_RUN_MARKER=\"$HOME/.owlia_first_run_done\"\n\n" +
                 "if [ ! -f \"$OWLIA_FIRST_RUN_MARKER\" ]; then\n" +
-                "    OWLIA_SETUP_OK=1\n\n" +
                 "    echo \"\\U0001F989 Welcome to Owlia!\"\n" +
                 "    echo \"\"\n" +
                 "    echo \"Setting up your environment...\"\n" +
                 "    echo \"\"\n\n" +
-                "    # Enable wake lock to prevent Android from killing the process\n" +
-                "    if command -v termux-wake-lock >/dev/null 2>&1; then\n" +
-                "        termux-wake-lock\n" +
-                "        echo \"✓ Wake lock enabled\"\n" +
-                "    fi\n\n" +
-                "    # Fix permissions on bootstrap binaries (zip may strip exec bits)\n" +
+                "    # Enable wake lock\n" +
+                "    termux-wake-lock 2>/dev/null && echo \"✓ Wake lock enabled\"\n\n" +
+                "    # Fix permissions (bootstrap zip strips exec bits)\n" +
+                "    echo \"Fixing permissions...\"\n" +
                 "    chmod +x $PREFIX/bin/* 2>/dev/null\n" +
-                "    chmod +x $PREFIX/lib/node_modules/npm/bin/* 2>/dev/null\n\n" +
-                "    # Fix any broken dependencies from bootstrap\n" +
-                "    apt --fix-broken install -y 2>/dev/null\n\n" +
-                "    # Set up a reliable mirror and update package lists\n" +
-                "    echo \"Updating package lists...\"\n" +
-                "    sed -i 's|^\\(deb.*\\)|#\\1|' $PREFIX/etc/apt/sources.list 2>/dev/null\n" +
-                "    echo 'deb https://packages.termux.dev/apt/termux-main stable main' >> $PREFIX/etc/apt/sources.list\n" +
-                "    pkg update -y && echo \"✓ Packages updated\" || echo \"✗ Package update failed\"\n\n" +
-                "    # Ensure proot is available (node + npm come from bootstrap)\n" +
-                "    echo \"Checking required packages...\"\n" +
-                "    apt --fix-broken install -y 2>/dev/null\n" +
-                "    pkg install proot -y && echo \"✓ Packages ready\" || {\n" +
-                "        echo \"✗ Package installation failed\"\n" +
-                "        OWLIA_SETUP_OK=0\n" +
-                "    }\n\n" +
-                "    # Verify npm is available\n" +
-                "    if ! command -v npm >/dev/null 2>&1; then\n" +
-                "        echo \"✗ npm not found. Trying to install...\"\n" +
-                "        pkg install npm -y || OWLIA_SETUP_OK=0\n" +
+                "    chmod +x $PREFIX/lib/node_modules/.bin/* 2>/dev/null\n" +
+                "    chmod +x $PREFIX/lib/node_modules/npm/bin/* 2>/dev/null\n" +
+                "    echo \"✓ Permissions fixed\"\n\n" +
+                "    # Verify node and npm work\n" +
+                "    echo \"Checking node: $(node --version 2>&1)\"\n" +
+                "    echo \"Checking npm:  $(npm --version 2>&1)\"\n\n" +
+                "    if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then\n" +
+                "        echo \"✗ node or npm not working. Bootstrap may be corrupted.\"\n" +
+                "        echo \"  Try: pkg install nodejs npm\"\n" +
+                "        return 1 2>/dev/null || exit 1\n" +
                 "    fi\n\n" +
-                "    # Install OpenClaw (--ignore-scripts to skip native compilation)\n" +
-                "    if [ $OWLIA_SETUP_OK -eq 1 ]; then\n" +
-                "        echo \"Installing OpenClaw...\"\n" +
-                "        npm install -g openclaw@latest --ignore-scripts && echo \"✓ OpenClaw installed\" || {\n" +
-                "            echo \"✗ OpenClaw installation failed\"\n" +
-                "            OWLIA_SETUP_OK=0\n" +
-                "        }\n" +
-                "    fi\n\n" +
-                "    echo \"\"\n" +
-                "    if [ $OWLIA_SETUP_OK -eq 1 ]; then\n" +
+                "    # Install OpenClaw\n" +
+                "    echo \"Installing OpenClaw...\"\n" +
+                "    if npm install -g openclaw@latest --ignore-scripts; then\n" +
                 "        touch \"$OWLIA_FIRST_RUN_MARKER\"\n" +
+                "        echo \"\"\n" +
+                "        echo \"✓ OpenClaw installed\"\n" +
+                "        echo \"\"\n" +
                 "        echo \"\\U0001F989 Setup complete! Run 'openclaw onboard' to get started.\"\n" +
                 "    else\n" +
-                "        echo \"\\U0001F989 Setup incomplete. Fix the errors above, then run:\"\n" +
-                "        echo \"  apt --fix-broken install -y && pkg install nodejs-lts proot -y\"\n" +
-                "        echo \"  npm install -g openclaw@latest --ignore-scripts\"\n" +
                 "        echo \"\"\n" +
-                "        echo \"Then restart Owlia to retry setup.\"\n" +
+                "        echo \"✗ OpenClaw installation failed\"\n" +
+                "        echo \"  Try manually: npm install -g openclaw@latest --ignore-scripts\"\n" +
                 "    fi\n" +
                 "    echo \"\"\n" +
                 "fi\n";
