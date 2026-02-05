@@ -89,12 +89,11 @@ public class OwliaLauncherActivity extends Activity {
             return;
         }
 
-        // All ready - for now, go to TermuxActivity (DashboardActivity will be implemented later)
-        Logger.logInfo(LOG_TAG, "All ready, routing to main activity");
+        // All ready - go to DashboardActivity
+        Logger.logInfo(LOG_TAG, "All ready, routing to dashboard");
         mStatusText.setText("Starting...");
 
-        // TODO: Replace with DashboardActivity when implemented
-        Intent intent = new Intent(this, TermuxActivity.class);
+        Intent intent = new Intent(this, DashboardActivity.class);
         startActivity(intent);
         finish();
     }

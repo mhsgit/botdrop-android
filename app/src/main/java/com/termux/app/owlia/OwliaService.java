@@ -256,4 +256,24 @@ public class OwliaService extends Service {
     public void getGatewayStatus(CommandCallback callback) {
         executeCommand("openclaw gateway status", callback);
     }
+
+    /**
+     * Check if the gateway is currently running
+     */
+    public void isGatewayRunning(CommandCallback callback) {
+        executeCommand("pgrep -f 'node.*openclaw.*gateway' > /dev/null && echo 'running' || echo 'stopped'", callback);
+    }
+
+    /**
+     * Get gateway uptime in a human-readable format
+     * Returns uptime string or null if gateway is not running
+     */
+    public void getGatewayUptime(CommandCallback callback) {
+        // Get the gateway process start time and calculate uptime
+        String cmd = "if pgrep -f 'node.*openclaw.*gateway' > /dev/null; then " +
+            "pid=$(pgrep -f 'node.*openclaw.*gateway' | head -1); " +
+            "ps -p $pid -o etime= 2>/dev/null || echo '—'; " +
+            "else echo '—'; fi";
+        executeCommand(cmd, callback);
+    }
 }

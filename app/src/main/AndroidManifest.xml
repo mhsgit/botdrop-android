@@ -27,6 +27,7 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.READ_LOGS" />
@@ -101,9 +102,23 @@
             android:exported="false"
             android:theme="@style/Theme.TermuxApp.DayNight.NoActionBar" />
 
+        <activity
+            android:name=".app.owlia.DashboardActivity"
+            android:exported="false"
+            android:theme="@style/Theme.TermuxApp.DayNight.NoActionBar" />
+
         <service
             android:name=".app.owlia.OwliaService"
             android:exported="false" />
+
+        <service
+            android:name=".app.owlia.GatewayMonitorService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Keep OpenClaw gateway alive" />
+        </service>
 
         <activity
             android:name=".app.activities.HelpActivity"
