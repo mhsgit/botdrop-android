@@ -165,86 +165,108 @@ public class OwliaService extends Service {
     }
 
     /**
-     * Install OpenClaw with progress callbacks
-     * Steps:
-     * 0 - Fix permissions
-     * 1 - Verify Node.js and npm
-     * 2 - Install OpenClaw via npm
+     * Install OpenClaw by calling the standalone install.sh script.
+     * Parses structured output lines for progress reporting:
+     *   BOTDROP_STEP:N:START:message  → callback.onStepStart(N, message)
+     *   BOTDROP_STEP:N:DONE           → callback.onStepComplete(N)
+     *   BOTDROP_COMPLETE              → callback.onComplete()
+     *   BOTDROP_ERROR:message         → callback.onError(message)
+     *   BOTDROP_ALREADY_INSTALLED     → callback.onComplete()
      */
     public void installOpenclaw(InstallProgressCallback callback) {
-        final String PREFIX = TermuxConstants.TERMUX_PREFIX_DIR_PATH;
-        final String BIN = TermuxConstants.TERMUX_BIN_PREFIX_DIR_PATH;
-        final String HOME = TermuxConstants.TERMUX_HOME_DIR_PATH;
+        final String INSTALL_SCRIPT = TermuxConstants.TERMUX_PREFIX_DIR_PATH + "/share/botdrop/install.sh";
 
         mExecutor.execute(() -> {
-            // Step 0: Fix permissions
-            mHandler.post(() -> callback.onStepStart(0, "Fixing permissions..."));
-
-            CommandResult chmodResult = executeCommandSync(
-                "chmod +x " + BIN + "/* 2>/dev/null; " +
-                "chmod +x " + PREFIX + "/lib/node_modules/.bin/* 2>/dev/null; " +
-                "exit 0"
-            );
-
-            mHandler.post(() -> callback.onStepComplete(0));
-
-            // Step 1: Verify Node.js and npm
-            mHandler.post(() -> callback.onStepStart(1, "Verifying Node.js..."));
-
-            CommandResult verifyResult = executeCommandSync(
-                BIN + "/node --version && " + BIN + "/npm --version"
-            );
-
-            if (!verifyResult.success) {
+            // Verify install script exists
+            if (!new java.io.File(INSTALL_SCRIPT).exists()) {
                 mHandler.post(() -> callback.onError(
-                    "Node.js not found. Bootstrap installation may be incomplete.\n\n" +
-                    verifyResult.stderr
+                    "Install script not found at " + INSTALL_SCRIPT +
+                    "\nBootstrap may be incomplete."
                 ));
                 return;
             }
 
-            Logger.logInfo(LOG_TAG, "Node.js version: " + verifyResult.stdout.trim());
-            mHandler.post(() -> callback.onStepComplete(1));
+            Process process = null;
+            try {
+                ProcessBuilder pb = new ProcessBuilder(
+                    TermuxConstants.TERMUX_BIN_PREFIX_DIR_PATH + "/bash",
+                    INSTALL_SCRIPT
+                );
 
-            // Step 2: Install OpenClaw
-            mHandler.post(() -> callback.onStepStart(2, "Installing OpenClaw..."));
+                pb.environment().put("PREFIX", TermuxConstants.TERMUX_PREFIX_DIR_PATH);
+                pb.environment().put("HOME", TermuxConstants.TERMUX_HOME_DIR_PATH);
+                pb.environment().put("PATH", TermuxConstants.TERMUX_BIN_PREFIX_DIR_PATH + ":" + System.getenv("PATH"));
+                pb.environment().put("TMPDIR", TermuxConstants.TERMUX_TMP_PREFIX_DIR_PATH);
+                pb.redirectErrorStream(true);
 
-            // Use explicit paths for npm install
-            CommandResult installResult = executeCommandSync(
-                "export HOME=" + HOME + " && " +
-                "export PREFIX=" + PREFIX + " && " +
-                "export PATH=" + BIN + ":$PATH && " +
-                "export TMPDIR=" + PREFIX + "/tmp && " +
-                BIN + "/npm install -g openclaw@latest --ignore-scripts 2>&1"
-            );
+                Logger.logInfo(LOG_TAG, "Starting install via " + INSTALL_SCRIPT);
+                process = pb.start();
 
-            if (!installResult.success) {
-                mHandler.post(() -> callback.onError(
-                    "Failed to install OpenClaw:\n\n" +
-                    installResult.stderr + "\n" + installResult.stdout
-                ));
-                return;
+                try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(process.getInputStream())
+                )) {
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        Logger.logVerbose(LOG_TAG, "install.sh: " + line);
+                        parseInstallOutput(line, callback);
+                    }
+                }
+
+                boolean finished = process.waitFor(300, TimeUnit.SECONDS);
+                if (!finished) {
+                    process.destroyForcibly();
+                    mHandler.post(() -> callback.onError("Installation timed out after 5 minutes"));
+                    return;
+                }
+
+                int exitCode = process.exitValue();
+                if (exitCode != 0) {
+                    mHandler.post(() -> callback.onError("Installation failed (exit code " + exitCode + ")"));
+                }
+
+            } catch (IOException | InterruptedException e) {
+                Logger.logError(LOG_TAG, "Installation failed: " + e.getMessage());
+                if (process != null) {
+                    process.destroy();
+                }
+                String msg = e.getMessage();
+                mHandler.post(() -> callback.onError("Installation error: " + msg));
             }
-
-            // Verify installation
-            CommandResult verifyInstall = executeCommandSync(
-                "test -f " + BIN + "/openclaw && echo 'OK' || echo 'FAIL'"
-            );
-
-            if (!verifyInstall.stdout.contains("OK")) {
-                mHandler.post(() -> callback.onError(
-                    "OpenClaw installation verification failed.\n" +
-                    "Binary not found at " + BIN + "/openclaw"
-                ));
-                return;
-            }
-
-            Logger.logInfo(LOG_TAG, "OpenClaw installed successfully");
-            mHandler.post(() -> {
-                callback.onStepComplete(2);
-                callback.onComplete();
-            });
         });
+    }
+
+    /**
+     * Parse a single line of structured output from install.sh
+     */
+    private void parseInstallOutput(String line, InstallProgressCallback callback) {
+        if (line.startsWith("BOTDROP_STEP:")) {
+            // Format: BOTDROP_STEP:N:START:message or BOTDROP_STEP:N:DONE
+            String[] parts = line.split(":", 4);
+            if (parts.length >= 3) {
+                try {
+                    int step = Integer.parseInt(parts[1]);
+                    String action = parts[2];
+                    if ("START".equals(action)) {
+                        String message = parts.length >= 4 ? parts[3] : "";
+                        mHandler.post(() -> callback.onStepStart(step, message));
+                    } else if ("DONE".equals(action)) {
+                        mHandler.post(() -> callback.onStepComplete(step));
+                    }
+                } catch (NumberFormatException e) {
+                    Logger.logWarn(LOG_TAG, "Invalid step number in: " + line);
+                }
+            }
+        } else if ("BOTDROP_COMPLETE".equals(line.trim())) {
+            Logger.logInfo(LOG_TAG, "Installation complete");
+            mHandler.post(callback::onComplete);
+        } else if ("BOTDROP_ALREADY_INSTALLED".equals(line.trim())) {
+            Logger.logInfo(LOG_TAG, "Already installed, skipping");
+            mHandler.post(callback::onComplete);
+        } else if (line.startsWith("BOTDROP_ERROR:")) {
+            String error = line.substring("BOTDROP_ERROR:".length());
+            mHandler.post(() -> callback.onError(error));
+        }
+        // Other lines (npm output, etc.) are logged but not parsed
     }
 
     /**
