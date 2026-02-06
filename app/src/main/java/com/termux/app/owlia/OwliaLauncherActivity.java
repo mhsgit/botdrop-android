@@ -1,7 +1,10 @@
 package com.termux.app.owlia;
 
+import android.Manifest;
 import android.app.Activity;
 import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -38,8 +41,23 @@ public class OwliaLauncherActivity extends Activity {
 
         mStatusText = findViewById(R.id.launcher_status_text);
 
+        // Request permissions immediately on app launch
+        requestPermissions();
+
         // Check installation state after a short delay to show splash
         mHandler.postDelayed(this::checkAndRoute, 500);
+    }
+
+    /**
+     * Request all required permissions upfront
+     */
+    private void requestPermissions() {
+        // Notification permission (Android 13+)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 1001);
+            }
+        }
     }
 
     private void checkAndRoute() {

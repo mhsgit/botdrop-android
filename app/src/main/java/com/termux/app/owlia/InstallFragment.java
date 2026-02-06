@@ -141,15 +141,22 @@ public class InstallFragment extends Fragment {
             @Override
             public void onComplete() {
                 Logger.logInfo(LOG_TAG, "Installation complete");
-                mStatusMessage.setText("Installation complete!");
+                
+                // Get and display version
+                String version = OwliaService.getOpenclawVersion();
+                if (version != null) {
+                    mStatusMessage.setText("Installation complete! (v" + version + ")");
+                } else {
+                    mStatusMessage.setText("Installation complete!");
+                }
 
-                // Auto-advance to next step after 1 second
+                // Auto-advance to next step after 1.5 seconds
                 mStatusMessage.postDelayed(() -> {
                     SetupActivity activity = (SetupActivity) getActivity();
                     if (activity != null) {
                         activity.goToNextStep();
                     }
-                }, 1000);
+                }, 1500);
             }
         });
     }

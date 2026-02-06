@@ -249,6 +249,43 @@ public class OwliaService extends Service {
     }
 
     /**
+     * Get OpenClaw version (synchronously)
+     */
+    public static String getOpenclawVersion() {
+        try {
+            java.io.File packageJson = new java.io.File(
+                TermuxConstants.TERMUX_PREFIX_DIR_PATH + "/lib/node_modules/openclaw/package.json"
+            );
+            if (packageJson.exists()) {
+                java.io.BufferedReader reader = new java.io.BufferedReader(
+                    new java.io.FileReader(packageJson)
+                );
+                StringBuilder content = new StringBuilder();
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    content.append(line);
+                }
+                reader.close();
+                
+                // Simple JSON parse for version
+                String json = content.toString();
+                int versionIdx = json.indexOf("\"version\"");
+                if (versionIdx != -1) {
+                    int colonIdx = json.indexOf(":", versionIdx);
+                    int startQuote = json.indexOf("\"", colonIdx + 1);
+                    int endQuote = json.indexOf("\"", startQuote + 1);
+                    if (startQuote != -1 && endQuote != -1) {
+                        return json.substring(startQuote + 1, endQuote);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            Logger.logError(LOG_TAG, "Failed to get OpenClaw version: " + e.getMessage());
+        }
+        return null;
+    }
+
+    /**
      * Check if OpenClaw config exists
      */
     public static boolean isOpenclawConfigured() {
