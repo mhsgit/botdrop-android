@@ -1,5 +1,9 @@
 package com.termux.app.owlia;
 
+import android.Manifest;
+import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.os.Build;
 import android.os.Bundle;
 import android.view.View;
 import android.widget.Button;
@@ -12,6 +16,7 @@ import androidx.viewpager2.adapter.FragmentStateAdapter;
 import androidx.viewpager2.widget.ViewPager2;
 
 import com.termux.R;
+import com.termux.app.TermuxActivity;
 import com.termux.shared.logger.Logger;
 
 /**
@@ -44,10 +49,19 @@ public class SetupActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_owlia_setup);
 
+        // Request notification permission (Android 13+)
+        requestNotificationPermission();
+
         mViewPager = findViewById(R.id.setup_viewpager);
         mNavigationBar = findViewById(R.id.setup_navigation);
         mBackButton = findViewById(R.id.setup_button_back);
         mNextButton = findViewById(R.id.setup_button_next);
+        
+        // Setup Open Terminal button if it exists in layout
+        Button openTerminalBtn = findViewById(R.id.setup_open_terminal);
+        if (openTerminalBtn != null) {
+            openTerminalBtn.setOnClickListener(v -> openTerminal());
+        }
 
         // Set up ViewPager2
         mAdapter = new SetupPagerAdapter(this);
@@ -74,6 +88,25 @@ public class SetupActivity extends AppCompatActivity {
         });
 
         Logger.logDebug(LOG_TAG, "SetupActivity created, starting at step " + startStep);
+    }
+
+    /**
+     * Request notification permission for Android 13+
+     */
+    private void requestNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 1001);
+            }
+        }
+    }
+
+    /**
+     * Open terminal activity
+     */
+    public void openTerminal() {
+        Intent intent = new Intent(this, TermuxActivity.class);
+        startActivity(intent);
     }
 
     /**

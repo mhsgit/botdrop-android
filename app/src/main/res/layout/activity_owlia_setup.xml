@@ -5,7 +5,22 @@
     android:orientation="vertical"
     android:background="?android:attr/colorBackground">
 
-    <!-- Top bar with step indicator (optional, can add later) -->
+    <!-- Top bar with Open Terminal button -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:padding="8dp"
+        android:gravity="end">
+
+        <Button
+            android:id="@+id/setup_open_terminal"
+            style="?android:attr/buttonBarButtonStyle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="🖥 Terminal"
+            android:textSize="12sp" />
+    </LinearLayout>
 
     <androidx.viewpager2.widget.ViewPager2
         android:id="@+id/setup_viewpager"
