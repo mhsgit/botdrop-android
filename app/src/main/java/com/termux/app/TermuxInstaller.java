@@ -406,7 +406,11 @@ public final class TermuxInstaller {
                 "export TMPDIR=$PREFIX/tmp\n" +
                 "mkdir -p $TMPDIR\n\n" +
                 "# Run openclaw through termux-chroot for /tmp support\n" +
-                "alias openclaw='termux-chroot openclaw'\n";
+                "alias openclaw='termux-chroot openclaw'\n\n" +
+                "# Auto-start sshd if not running\n" +
+                "if ! pgrep -x sshd >/dev/null 2>&1; then\n" +
+                "    sshd 2>/dev/null\n" +
+                "fi\n";
 
             try (FileOutputStream fos = new FileOutputStream(envScript)) {
                 fos.write(envContent.getBytes());
@@ -419,7 +423,7 @@ public final class TermuxInstaller {
             String scriptContent =
                 "# Owlia first-run setup script\n" +
                 "# Bootstrap already has: node, npm, git, openssh, proot, termux-api\n" +
-                "# This script only: fixes permissions, installs OpenClaw, done.\n\n" +
+                "# This script: fixes permissions, configures sshd, installs OpenClaw\n\n" +
                 "OWLIA_FIRST_RUN_MARKER=\"$HOME/.owlia_first_run_done\"\n\n" +
                 "if [ ! -f \"$OWLIA_FIRST_RUN_MARKER\" ]; then\n" +
                 "    echo \"\\U0001F989 Welcome to Owlia!\"\n" +
@@ -434,6 +438,38 @@ public final class TermuxInstaller {
                 "    chmod +x $PREFIX/lib/node_modules/.bin/* 2>/dev/null\n" +
                 "    chmod +x $PREFIX/lib/node_modules/npm/bin/* 2>/dev/null\n" +
                 "    echo \"✓ Permissions fixed\"\n\n" +
+                "    # Configure SSH server\n" +
+                "    echo \"Configuring SSH server...\"\n" +
+                "    \n" +
+                "    # Generate host keys if not exist\n" +
+                "    if [ ! -f \"$PREFIX/etc/ssh/ssh_host_rsa_key\" ]; then\n" +
+                "        ssh-keygen -A 2>/dev/null\n" +
+                "    fi\n" +
+                "    \n" +
+                "    # Set password for SSH access\n" +
+                "    echo \"ghost2501\" | passwd -s 2>/dev/null || {\n" +
+                "        # Fallback: create password file directly for Termux\n" +
+                "        mkdir -p $PREFIX/etc\n" +
+                "        # Use openssl to hash the password\n" +
+                "        HASH=$(openssl passwd -6 ghost2501 2>/dev/null || openssl passwd -1 ghost2501)\n" +
+                "        echo \"$USER:$HASH:18000:0:99999:7:::\" > $PREFIX/etc/shadow 2>/dev/null\n" +
+                "    }\n" +
+                "    \n" +
+                "    # Enable password authentication in sshd_config\n" +
+                "    SSHD_CONFIG=\"$PREFIX/etc/ssh/sshd_config\"\n" +
+                "    if [ -f \"$SSHD_CONFIG\" ]; then\n" +
+                "        sed -i 's/^#*PasswordAuthentication.*/PasswordAuthentication yes/' $SSHD_CONFIG\n" +
+                "        sed -i 's/^#*PermitEmptyPasswords.*/PermitEmptyPasswords no/' $SSHD_CONFIG\n" +
+                "    fi\n" +
+                "    \n" +
+                "    # Start sshd\n" +
+                "    sshd 2>/dev/null && echo \"✓ SSH server started on port 8022\"\n" +
+                "    \n" +
+                "    # Get IP address for connection info\n" +
+                "    IP=$(ip route get 1 2>/dev/null | awk '{print $7; exit}' || hostname -I 2>/dev/null | awk '{print $1}')\n" +
+                "    echo \"  Connect: ssh -p 8022 $IP\"\n" +
+                "    echo \"  Password: ghost2501\"\n" +
+                "    echo \"\"\n\n" +
                 "    # Verify node and npm work\n" +
                 "    echo \"Checking node: $(node --version 2>&1)\"\n" +
                 "    echo \"Checking npm:  $(npm --version 2>&1)\"\n\n" +
