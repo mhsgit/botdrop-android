@@ -20,6 +20,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.annotation.Nullable;
+import androidx.core.content.ContextCompat;
 
 import com.termux.R;
 import com.termux.app.TermuxActivity;
@@ -244,19 +245,19 @@ public class DashboardActivity extends Activity {
                 // Check Telegram
                 if (channels.has("telegram")) {
                     mTelegramStatus.setText("● Connected");
-                    mTelegramStatus.setTextColor(0xFF4CAF50); // Green
+                    mTelegramStatus.setTextColor(ContextCompat.getColor(this, R.color.status_connected));
                 } else {
                     mTelegramStatus.setText("○ —");
-                    mTelegramStatus.setTextColor(0xFF9E9E9E); // Gray
+                    mTelegramStatus.setTextColor(ContextCompat.getColor(this, R.color.status_disconnected));
                 }
 
                 // Check Discord
                 if (channels.has("discord")) {
                     mDiscordStatus.setText("● Connected");
-                    mDiscordStatus.setTextColor(0xFF4CAF50); // Green
+                    mDiscordStatus.setTextColor(ContextCompat.getColor(this, R.color.status_connected));
                 } else {
                     mDiscordStatus.setText("○ —");
-                    mDiscordStatus.setTextColor(0xFF9E9E9E); // Gray
+                    mDiscordStatus.setTextColor(ContextCompat.getColor(this, R.color.status_disconnected));
                 }
             }
         } catch (Exception e) {

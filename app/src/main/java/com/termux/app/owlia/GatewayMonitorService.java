@@ -53,13 +53,15 @@ public class GatewayMonitorService extends Service {
         mOwliaService = new OwliaService();
 
         // Acquire partial wake lock to handle Doze mode
+        // No timeout - service runs indefinitely, release in onDestroy
         PowerManager powerManager = (PowerManager) getSystemService(Context.POWER_SERVICE);
         if (powerManager != null) {
             mWakeLock = powerManager.newWakeLock(
                 PowerManager.PARTIAL_WAKE_LOCK,
                 "BotDrop::GatewayMonitor"
             );
-            mWakeLock.acquire(10*60*1000L /*10 minutes*/);
+            mWakeLock.setReferenceCounted(false); // Ensure single release is enough
+            mWakeLock.acquire();
         }
     }
 

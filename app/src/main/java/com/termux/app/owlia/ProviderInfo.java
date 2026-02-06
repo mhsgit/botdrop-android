@@ -43,7 +43,8 @@ public class ProviderInfo {
     }
     
     public List<AuthMethod> getAuthMethods() {
-        return authMethods;
+        // Return defensive copy to prevent external modification
+        return new ArrayList<>(authMethods);
     }
     
     public boolean isRecommended() {

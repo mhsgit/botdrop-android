@@ -19,6 +19,8 @@ import androidx.fragment.app.Fragment;
 import com.termux.R;
 import com.termux.shared.logger.Logger;
 
+import java.util.concurrent.atomic.AtomicBoolean;
+
 /**
  * Step 1 of setup: Welcome + Auto-install OpenClaw
  *
@@ -43,7 +45,7 @@ public class InstallFragment extends Fragment {
 
     private OwliaService mService;
     private boolean mBound = false;
-    private boolean mInstallationStarted = false;
+    private final AtomicBoolean mInstallationStarted = new AtomicBoolean(false);
 
     private ServiceConnection mConnection = new ServiceConnection() {
         @Override
@@ -53,8 +55,8 @@ public class InstallFragment extends Fragment {
             mBound = true;
             Logger.logDebug(LOG_TAG, "Service connected");
 
-            // Auto-start installation
-            if (!mInstallationStarted) {
+            // Auto-start installation (atomic check-and-set to prevent duplicate starts)
+            if (mInstallationStarted.compareAndSet(false, true)) {
                 startInstallation();
             }
         }
@@ -115,10 +117,10 @@ public class InstallFragment extends Fragment {
     private void startInstallation() {
         if (!mBound || mService == null) {
             Logger.logError(LOG_TAG, "Cannot start installation: service not bound");
+            mInstallationStarted.set(false); // Reset so it can retry
             return;
         }
 
-        mInstallationStarted = true;
         Logger.logInfo(LOG_TAG, "Starting OpenClaw installation");
 
         mService.installOpenclaw(new OwliaService.InstallProgressCallback() {
@@ -153,7 +155,7 @@ public class InstallFragment extends Fragment {
                 // Auto-advance to next step after 1.5 seconds
                 mStatusMessage.postDelayed(() -> {
                     SetupActivity activity = (SetupActivity) getActivity();
-                    if (activity != null) {
+                    if (activity != null && !activity.isFinishing()) {
                         activity.goToNextStep();
                     }
                 }, 1500);
@@ -200,6 +202,6 @@ public class InstallFragment extends Fragment {
         mStep1Icon.setText("○");
         mStep2Icon.setText("○");
         mStatusMessage.setText("This takes about a minute");
-        mInstallationStarted = false;
+        mInstallationStarted.set(false);
     }
 }

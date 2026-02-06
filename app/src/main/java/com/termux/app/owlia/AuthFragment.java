@@ -406,7 +406,7 @@ public class AuthFragment extends Fragment {
             // Auto-advance after short delay
             mVerifyButton.postDelayed(() -> {
                 SetupActivity activity = (SetupActivity) getActivity();
-                if (activity != null) {
+                if (activity != null && !activity.isFinishing()) {
                     activity.goToNextStep();
                 }
             }, 1500);
