@@ -47,6 +47,9 @@ public class InstallFragment extends Fragment {
     private boolean mBound = false;
     private final AtomicBoolean mInstallationStarted = new AtomicBoolean(false);
 
+    // Track delayed callbacks to prevent memory leaks
+    private Runnable mNavigationRunnable;
+
     private ServiceConnection mConnection = new ServiceConnection() {
         @Override
         public void onServiceConnected(ComponentName name, IBinder service) {
@@ -114,6 +117,35 @@ public class InstallFragment extends Fragment {
         }
     }
 
+    @Override
+    public void onDestroyView() {
+        super.onDestroyView();
+
+        // Remove pending delayed callbacks to prevent memory leak
+        if (mNavigationRunnable != null && mStatusMessage != null) {
+            mStatusMessage.removeCallbacks(mNavigationRunnable);
+            mNavigationRunnable = null;
+        }
+    }
+
+    @Override
+    public void onDestroy() {
+        super.onDestroy();
+        // Ensure service is unbound even if onStop() wasn't called
+        // (e.g., if fragment was destroyed while in background)
+        if (mBound) {
+            try {
+                requireActivity().unbindService(mConnection);
+                Logger.logDebug(LOG_TAG, "Service unbound in onDestroy()");
+            } catch (IllegalArgumentException e) {
+                // Service was not bound or already unbound
+                Logger.logDebug(LOG_TAG, "Service was already unbound");
+            }
+            mBound = false;
+            mService = null;
+        }
+    }
+
     private void startInstallation() {
         if (!mBound || mService == null) {
             Logger.logError(LOG_TAG, "Cannot start installation: service not bound");
@@ -143,7 +175,7 @@ public class InstallFragment extends Fragment {
             @Override
             public void onComplete() {
                 Logger.logInfo(LOG_TAG, "Installation complete");
-                
+
                 // Get and display version
                 String version = OwliaService.getOpenclawVersion();
                 if (version != null) {
@@ -153,12 +185,14 @@ public class InstallFragment extends Fragment {
                 }
 
                 // Auto-advance to next step after 1.5 seconds
-                mStatusMessage.postDelayed(() -> {
+                // Track runnable so we can remove it in onDestroyView() if needed
+                mNavigationRunnable = () -> {
                     SetupActivity activity = (SetupActivity) getActivity();
                     if (activity != null && !activity.isFinishing()) {
                         activity.goToNextStep();
                     }
-                }, 1500);
+                };
+                mStatusMessage.postDelayed(mNavigationRunnable, 1500);
             }
         });
     }

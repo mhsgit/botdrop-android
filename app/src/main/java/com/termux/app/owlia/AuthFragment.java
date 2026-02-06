@@ -66,9 +66,12 @@ public class AuthFragment extends Fragment {
     
     // Keep track of all provider views for radio button management
     private List<View> mAllProviderViews = new ArrayList<>();
-    
+
     private OwliaService mService;
     private boolean mBound = false;
+
+    // Track delayed callbacks to prevent memory leaks
+    private Runnable mNavigationRunnable;
 
     private ServiceConnection mConnection = new ServiceConnection() {
         @Override
@@ -133,8 +136,33 @@ public class AuthFragment extends Fragment {
     @Override
     public void onDestroyView() {
         super.onDestroyView();
+
+        // Remove pending delayed callbacks to prevent memory leak
+        if (mNavigationRunnable != null && mVerifyButton != null) {
+            mVerifyButton.removeCallbacks(mNavigationRunnable);
+            mNavigationRunnable = null;
+        }
+
         // Release view references to prevent memory leak
         mAllProviderViews.clear();
+    }
+
+    @Override
+    public void onDestroy() {
+        super.onDestroy();
+        // Ensure service is unbound even if onStop() wasn't called
+        // (e.g., if fragment was destroyed while in background)
+        if (mBound) {
+            try {
+                requireActivity().unbindService(mConnection);
+                Logger.logDebug(LOG_TAG, "Service unbound in onDestroy()");
+            } catch (IllegalArgumentException e) {
+                // Service was not bound or already unbound
+                Logger.logDebug(LOG_TAG, "Service was already unbound");
+            }
+            mBound = false;
+            mService = null;
+        }
     }
 
     private void setupProviderSelectionView() {
@@ -404,12 +432,14 @@ public class AuthFragment extends Fragment {
             showStatus("✓ Connected!\nModel: " + providerId + "/" + model, true);
 
             // Auto-advance after short delay
-            mVerifyButton.postDelayed(() -> {
+            // Track runnable so we can remove it in onDestroyView() if needed
+            mNavigationRunnable = () -> {
                 SetupActivity activity = (SetupActivity) getActivity();
                 if (activity != null && !activity.isFinishing()) {
                     activity.goToNextStep();
                 }
-            }, 1500);
+            };
+            mVerifyButton.postDelayed(mNavigationRunnable, 1500);
         } else {
             showStatus("Failed to write config. Check app permissions.", false);
             resetVerifyButton();

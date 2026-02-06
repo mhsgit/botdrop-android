@@ -4,8 +4,10 @@ import android.app.Notification;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
+import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
+import android.content.ServiceConnection;
 import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
@@ -20,7 +22,7 @@ import com.termux.shared.logger.Logger;
 
 /**
  * Foreground service that monitors and keeps the OpenClaw gateway alive.
- * 
+ *
  * Features:
  * - Runs as a foreground service with persistent notification
  * - Starts gateway if not running
@@ -35,25 +37,55 @@ public class GatewayMonitorService extends Service {
     private static final int MONITOR_INTERVAL_MS = 30000; // 30 seconds
     private static final int RESTART_DELAY_MS = 5000; // 5 seconds
     private static final int MAX_RESTART_ATTEMPTS = 5;
+    private static final long WAKELOCK_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes
+    private static final long WAKELOCK_REACQUIRE_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
 
     private Handler mHandler = new Handler(Looper.getMainLooper());
     private Runnable mMonitorRunnable;
     private PowerManager.WakeLock mWakeLock;
+    private long mWakeLockLastAcquired = 0;
     private OwliaService mOwliaService;
+    private boolean mOwliaServiceBound = false;
     private boolean mIsMonitoring = false;
     private String mCurrentStatus = "Starting...";
     private int mRestartAttempts = 0;
+
+    /**
+     * Service connection for binding to OwliaService
+     */
+    private ServiceConnection mOwliaServiceConnection = new ServiceConnection() {
+        @Override
+        public void onServiceConnected(ComponentName name, IBinder service) {
+            OwliaService.LocalBinder binder = (OwliaService.LocalBinder) service;
+            mOwliaService = binder.getService();
+            mOwliaServiceBound = true;
+            Logger.logInfo(LOG_TAG, "Bound to OwliaService");
+
+            // Now that service is bound, start monitoring
+            if (!mIsMonitoring) {
+                startMonitoring();
+            }
+        }
+
+        @Override
+        public void onServiceDisconnected(ComponentName name) {
+            mOwliaService = null;
+            mOwliaServiceBound = false;
+            Logger.logInfo(LOG_TAG, "Disconnected from OwliaService");
+        }
+    };
 
     @Override
     public void onCreate() {
         super.onCreate();
         Logger.logInfo(LOG_TAG, "Service created");
 
-        // Initialize Owlia service for command execution
-        mOwliaService = new OwliaService();
+        // Bind to OwliaService for command execution
+        Intent intent = new Intent(this, OwliaService.class);
+        bindService(intent, mOwliaServiceConnection, Context.BIND_AUTO_CREATE);
 
-        // Acquire partial wake lock to handle Doze mode
-        // No timeout - service runs indefinitely, release in onDestroy
+        // Initialize wake lock to handle Doze mode
+        // Uses timeout with periodic re-acquisition to prevent orphaned locks
         PowerManager powerManager = (PowerManager) getSystemService(Context.POWER_SERVICE);
         if (powerManager != null) {
             mWakeLock = powerManager.newWakeLock(
@@ -61,7 +93,7 @@ public class GatewayMonitorService extends Service {
                 "BotDrop::GatewayMonitor"
             );
             mWakeLock.setReferenceCounted(false); // Ensure single release is enough
-            mWakeLock.acquire();
+            acquireWakeLock();
         }
     }
 
@@ -73,10 +105,8 @@ public class GatewayMonitorService extends Service {
         Notification notification = buildNotification("BotDrop is running");
         startForeground(NOTIFICATION_ID, notification);
 
-        // Start monitoring if not already monitoring
-        if (!mIsMonitoring) {
-            startMonitoring();
-        }
+        // Monitoring will start automatically when OwliaService is bound
+        // (see onServiceConnected callback)
 
         // START_STICKY ensures the service is restarted if killed
         return START_STICKY;
@@ -89,6 +119,22 @@ public class GatewayMonitorService extends Service {
 
         // Stop monitoring
         stopMonitoring();
+
+        // Remove all pending callbacks to prevent leaks
+        mHandler.removeCallbacksAndMessages(null);
+
+        // Unbind from OwliaService
+        if (mOwliaServiceBound) {
+            try {
+                unbindService(mOwliaServiceConnection);
+                Logger.logInfo(LOG_TAG, "Unbound from OwliaService");
+            } catch (IllegalArgumentException e) {
+                // Service was not bound or already unbound
+                Logger.logDebug(LOG_TAG, "Service was already unbound");
+            }
+            mOwliaServiceBound = false;
+            mOwliaService = null;
+        }
 
         // Release wake lock
         if (mWakeLock != null && mWakeLock.isHeld()) {
@@ -112,7 +158,12 @@ public class GatewayMonitorService extends Service {
         mMonitorRunnable = new Runnable() {
             @Override
             public void run() {
+                // Re-acquire WakeLock periodically to prevent timeout
+                reacquireWakeLockIfNeeded();
+
+                // Check gateway status
                 checkAndRestartGateway();
+
                 if (mIsMonitoring) {
                     mHandler.postDelayed(this, MONITOR_INTERVAL_MS);
                 }
@@ -137,6 +188,12 @@ public class GatewayMonitorService extends Service {
      * Check if gateway is running and restart if needed
      */
     private void checkAndRestartGateway() {
+        // Only proceed if service is bound
+        if (!mOwliaServiceBound || mOwliaService == null) {
+            Logger.logDebug(LOG_TAG, "OwliaService not bound yet, skipping check");
+            return;
+        }
+
         try {
             mOwliaService.isGatewayRunning(result -> {
                 try {
@@ -165,6 +222,12 @@ public class GatewayMonitorService extends Service {
      * Restart the gateway
      */
     private void restartGateway() {
+        // Only proceed if service is bound
+        if (!mOwliaServiceBound || mOwliaService == null) {
+            Logger.logError(LOG_TAG, "Cannot restart: OwliaService not bound");
+            return;
+        }
+
         // Check if we've exceeded max restart attempts
         if (mRestartAttempts >= MAX_RESTART_ATTEMPTS) {
             Logger.logError(LOG_TAG, "Max restart attempts (" + MAX_RESTART_ATTEMPTS + ") reached");
@@ -247,5 +310,38 @@ public class GatewayMonitorService extends Service {
         }
 
         return builder.build();
+    }
+
+    /**
+     * Acquire WakeLock with timeout to prevent orphaned locks.
+     * If the service crashes, the lock will automatically release after timeout.
+     */
+    private void acquireWakeLock() {
+        if (mWakeLock != null && !mWakeLock.isHeld()) {
+            mWakeLock.acquire(WAKELOCK_TIMEOUT_MS);
+            mWakeLockLastAcquired = System.currentTimeMillis();
+            Logger.logDebug(LOG_TAG, "WakeLock acquired with " + (WAKELOCK_TIMEOUT_MS / 60000) + " minute timeout");
+        }
+    }
+
+    /**
+     * Re-acquire WakeLock if it's been held for longer than the reacquire interval.
+     * This prevents the timeout from expiring while the service is running normally.
+     */
+    private void reacquireWakeLockIfNeeded() {
+        if (mWakeLock == null) {
+            return;
+        }
+
+        long timeSinceLastAcquire = System.currentTimeMillis() - mWakeLockLastAcquired;
+        if (timeSinceLastAcquire >= WAKELOCK_REACQUIRE_INTERVAL_MS) {
+            // Release and re-acquire to reset the timeout
+            if (mWakeLock.isHeld()) {
+                mWakeLock.release();
+                Logger.logDebug(LOG_TAG, "WakeLock released for re-acquisition");
+            }
+            acquireWakeLock();
+            Logger.logDebug(LOG_TAG, "WakeLock re-acquired to prevent timeout");
+        }
     }
 }
