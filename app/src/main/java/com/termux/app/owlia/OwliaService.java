@@ -15,6 +15,7 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Background service for executing Owlia-related commands and managing gateway lifecycle.
@@ -104,6 +105,7 @@ public class OwliaService extends Service {
         StringBuilder stdout = new StringBuilder();
         StringBuilder stderr = new StringBuilder();
         int exitCode = -1;
+        Process process = null;
 
         try {
             ProcessBuilder pb = new ProcessBuilder("sh", "-c", command);
@@ -117,7 +119,7 @@ public class OwliaService extends Service {
             pb.redirectErrorStream(false);
 
             Logger.logDebug(LOG_TAG, "Executing: " + command);
-            Process process = pb.start();
+            process = pb.start();
 
             // Read stdout
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
@@ -137,13 +139,26 @@ public class OwliaService extends Service {
                 }
             }
 
-            exitCode = process.waitFor();
+            // Wait with timeout to prevent hanging indefinitely
+            boolean finished = process.waitFor(60, TimeUnit.SECONDS);
+            if (!finished) {
+                process.destroyForcibly();
+                Logger.logError(LOG_TAG, "Command timeout after 60 seconds");
+                return new CommandResult(false, stdout.toString(),
+                    "Command timeout after 60 seconds", -1);
+            }
+
+            exitCode = process.exitValue();
             Logger.logDebug(LOG_TAG, "Command exited with code: " + exitCode);
 
             return new CommandResult(exitCode == 0, stdout.toString(), stderr.toString(), exitCode);
 
         } catch (IOException | InterruptedException e) {
             Logger.logError(LOG_TAG, "Command execution failed: " + e.getMessage());
+            // Clean up process on exception
+            if (process != null) {
+                process.destroy();
+            }
             return new CommandResult(false, stdout.toString(),
                 stderr.toString() + "\nException: " + e.getMessage(), exitCode);
         }

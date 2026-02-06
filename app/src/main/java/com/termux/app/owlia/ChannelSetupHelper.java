@@ -68,7 +68,8 @@ public class ChannelSetupHelper {
             byte[] decodedBytes = Base64.decode(base64Payload, Base64.DEFAULT);
             String jsonString = new String(decodedBytes);
 
-            Logger.logDebug(LOG_TAG, "Decoded setup code JSON: " + jsonString);
+            // NOTE: Do not log jsonString - it contains sensitive bot_token
+            Logger.logDebug(LOG_TAG, "Setup code decoded successfully");
 
             // Parse JSON
             JSONObject json = new JSONObject(jsonString);

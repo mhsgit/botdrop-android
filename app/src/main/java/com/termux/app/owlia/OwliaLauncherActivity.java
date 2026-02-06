@@ -48,6 +48,13 @@ public class OwliaLauncherActivity extends Activity {
         mHandler.postDelayed(this::checkAndRoute, 500);
     }
 
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        // Cancel all pending callbacks to prevent memory leak
+        mHandler.removeCallbacksAndMessages(null);
+    }
+
     /**
      * Request all required permissions upfront
      */

@@ -34,6 +34,7 @@ public class GatewayMonitorService extends Service {
     private static final int NOTIFICATION_ID = 1001;
     private static final int MONITOR_INTERVAL_MS = 30000; // 30 seconds
     private static final int RESTART_DELAY_MS = 5000; // 5 seconds
+    private static final int MAX_RESTART_ATTEMPTS = 5;
 
     private Handler mHandler = new Handler(Looper.getMainLooper());
     private Runnable mMonitorRunnable;
@@ -41,6 +42,7 @@ public class GatewayMonitorService extends Service {
     private OwliaService mOwliaService;
     private boolean mIsMonitoring = false;
     private String mCurrentStatus = "Starting...";
+    private int mRestartAttempts = 0;
 
     @Override
     public void onCreate() {
@@ -133,37 +135,67 @@ public class GatewayMonitorService extends Service {
      * Check if gateway is running and restart if needed
      */
     private void checkAndRestartGateway() {
-        mOwliaService.isGatewayRunning(result -> {
-            boolean isRunning = result.success && result.stdout.trim().equals("running");
+        try {
+            mOwliaService.isGatewayRunning(result -> {
+                try {
+                    boolean isRunning = result.success && result.stdout.trim().equals("running");
 
-            if (isRunning) {
-                // Gateway is running - update status
-                updateStatus("Running");
-            } else {
-                // Gateway is not running - restart it
-                Logger.logInfo(LOG_TAG, "Gateway is not running, attempting restart");
-                updateStatus("Restarting...");
-                restartGateway();
-            }
-        });
+                    if (isRunning) {
+                        // Gateway is running - reset restart counter and update status
+                        mRestartAttempts = 0;
+                        updateStatus("Running");
+                    } else {
+                        // Gateway is not running - restart it
+                        Logger.logInfo(LOG_TAG, "Gateway is not running, attempting restart");
+                        updateStatus("Restarting...");
+                        restartGateway();
+                    }
+                } catch (Exception e) {
+                    Logger.logError(LOG_TAG, "Error in gateway check callback: " + e.getMessage());
+                }
+            });
+        } catch (Exception e) {
+            Logger.logError(LOG_TAG, "Error checking gateway status: " + e.getMessage());
+        }
     }
 
     /**
      * Restart the gateway
      */
     private void restartGateway() {
-        mOwliaService.executeCommand("openclaw gateway start", result -> {
-            if (result.success) {
-                Logger.logInfo(LOG_TAG, "Gateway started successfully");
-                mHandler.postDelayed(() -> updateStatus("Running"), RESTART_DELAY_MS);
-            } else {
-                Logger.logError(LOG_TAG, "Failed to start gateway: " + result.stderr);
-                updateStatus("Failed to start");
-                
-                // Try again after delay
-                mHandler.postDelayed(this::restartGateway, RESTART_DELAY_MS);
-            }
-        });
+        // Check if we've exceeded max restart attempts
+        if (mRestartAttempts >= MAX_RESTART_ATTEMPTS) {
+            Logger.logError(LOG_TAG, "Max restart attempts (" + MAX_RESTART_ATTEMPTS + ") reached");
+            updateStatus("Failed - manual restart required");
+            return;
+        }
+
+        mRestartAttempts++;
+        Logger.logInfo(LOG_TAG, "Restart attempt " + mRestartAttempts + "/" + MAX_RESTART_ATTEMPTS);
+
+        try {
+            mOwliaService.executeCommand("openclaw gateway start", result -> {
+                try {
+                    if (result.success) {
+                        Logger.logInfo(LOG_TAG, "Gateway started successfully");
+                        mRestartAttempts = 0; // Reset on success
+                        mHandler.postDelayed(() -> updateStatus("Running"), RESTART_DELAY_MS);
+                    } else {
+                        Logger.logError(LOG_TAG, "Failed to start gateway: " + result.stderr);
+                        updateStatus("Failed (attempt " + mRestartAttempts + "/" + MAX_RESTART_ATTEMPTS + ")");
+                        
+                        // Try again after delay if we haven't hit the limit
+                        if (mRestartAttempts < MAX_RESTART_ATTEMPTS) {
+                            mHandler.postDelayed(this::restartGateway, RESTART_DELAY_MS);
+                        }
+                    }
+                } catch (Exception e) {
+                    Logger.logError(LOG_TAG, "Error in gateway restart callback: " + e.getMessage());
+                }
+            });
+        } catch (Exception e) {
+            Logger.logError(LOG_TAG, "Error executing gateway start: " + e.getMessage());
+        }
     }
 
     /**

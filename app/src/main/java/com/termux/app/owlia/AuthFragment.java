@@ -130,6 +130,13 @@ public class AuthFragment extends Fragment {
         }
     }
 
+    @Override
+    public void onDestroyView() {
+        super.onDestroyView();
+        // Release view references to prevent memory leak
+        mAllProviderViews.clear();
+    }
+
     private void setupProviderSelectionView() {
         mPopularProvidersContainer = mProviderSelectionView.findViewById(R.id.auth_popular_providers);
         mMoreProvidersContainer = mProviderSelectionView.findViewById(R.id.auth_more_providers);

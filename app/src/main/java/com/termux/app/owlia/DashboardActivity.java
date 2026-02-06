@@ -115,10 +115,9 @@ public class DashboardActivity extends Activity {
     protected void onDestroy() {
         super.onDestroy();
         
-        // Stop status refresh
-        if (mStatusRefreshRunnable != null) {
-            mHandler.removeCallbacks(mStatusRefreshRunnable);
-        }
+        // Cancel all pending callbacks to prevent memory leak
+        mHandler.removeCallbacksAndMessages(null);
+        mStatusRefreshRunnable = null;
         
         // Unbind from service
         if (mBound) {
