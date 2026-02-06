@@ -100,40 +100,19 @@ public class ChannelSetupHelper {
 
     /**
      * Write channel configuration to openclaw.json
-     * 
-     * For Telegram:
-     * {
-     *   "channels": {
-     *     "telegram": {
-     *       "accounts": {
-     *         "default": { "token": "BOT_TOKEN" }
-     *       },
-     *       "bindings": [{ "account": "default" }],
-     *       "ownerIds": ["OWNER_ID"]
-     *     }
-     *   }
-     * }
-     * 
-     * For Discord:
-     * {
-     *   "channels": {
-     *     "discord": {
-     *       "token": "BOT_TOKEN",
-     *       "ownerIds": ["OWNER_ID"]
-     *     }
-     *   }
-     * }
-     * 
+     *
+     * For Telegram: { channels: { telegram: { enabled: true, botToken: "...", dmPolicy: "pairing" } } }
+     * For Discord:  { channels: { discord: { enabled: true, token: "..." } } }
+     *
      * @param platform "telegram" or "discord"
      * @param botToken Bot token
-     * @param ownerId User ID who owns/controls the bot
+     * @param ownerId User ID who owns/controls the bot (used for allowFrom)
      * @return true if successful
      */
     public static boolean writeChannelConfig(String platform, String botToken, String ownerId) {
         try {
             JSONObject config = OwliaConfig.readConfig();
 
-            // Create channels object if not exists
             if (!config.has("channels")) {
                 config.put("channels", new JSONObject());
             }
@@ -141,48 +120,40 @@ public class ChannelSetupHelper {
             JSONObject channels = config.getJSONObject("channels");
 
             if (platform.equals("telegram")) {
-                // Telegram structure
                 JSONObject telegram = new JSONObject();
-
-                // accounts.default.token
-                JSONObject accounts = new JSONObject();
-                JSONObject defaultAccount = new JSONObject();
-                defaultAccount.put("token", botToken);
-                accounts.put("default", defaultAccount);
-                telegram.put("accounts", accounts);
-
-                // bindings: [{ account: "default" }]
-                JSONArray bindings = new JSONArray();
-                JSONObject binding = new JSONObject();
-                binding.put("account", "default");
-                bindings.put(binding);
-                telegram.put("bindings", bindings);
-
-                // ownerIds: ["OWNER_ID"]
-                JSONArray ownerIds = new JSONArray();
-                ownerIds.put(ownerId);
-                telegram.put("ownerIds", ownerIds);
-
+                telegram.put("enabled", true);
+                telegram.put("botToken", botToken);
+                telegram.put("dmPolicy", "allowlist");
+                telegram.put("groupPolicy", "allowlist");
+                telegram.put("streamMode", "partial");
+                JSONArray allowFrom = new JSONArray();
+                allowFrom.put(ownerId);
+                telegram.put("allowFrom", allowFrom);
                 channels.put("telegram", telegram);
 
             } else if (platform.equals("discord")) {
-                // Discord structure
                 JSONObject discord = new JSONObject();
-
-                // token
+                discord.put("enabled", true);
                 discord.put("token", botToken);
-
-                // ownerIds: ["OWNER_ID"]
-                JSONArray ownerIds = new JSONArray();
-                ownerIds.put(ownerId);
-                discord.put("ownerIds", ownerIds);
-
                 channels.put("discord", discord);
 
             } else {
                 Logger.logError(LOG_TAG, "Unsupported platform: " + platform);
                 return false;
             }
+
+            // Enable channel plugin
+            if (!config.has("plugins")) {
+                config.put("plugins", new JSONObject());
+            }
+            JSONObject plugins = config.getJSONObject("plugins");
+            if (!plugins.has("entries")) {
+                plugins.put("entries", new JSONObject());
+            }
+            JSONObject entries = plugins.getJSONObject("entries");
+            JSONObject pluginEntry = new JSONObject();
+            pluginEntry.put("enabled", true);
+            entries.put(platform, pluginEntry);
 
             Logger.logInfo(LOG_TAG, "Writing channel config for platform: " + platform);
             return OwliaConfig.writeConfig(config);

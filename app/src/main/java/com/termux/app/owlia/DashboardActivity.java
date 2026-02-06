@@ -23,8 +23,14 @@ import androidx.core.content.ContextCompat;
 import com.termux.R;
 import com.termux.app.TermuxActivity;
 import com.termux.shared.logger.Logger;
+import com.termux.shared.termux.TermuxConstants;
 
 import org.json.JSONObject;
+
+import java.net.Inet4Address;
+import java.net.InetAddress;
+import java.net.NetworkInterface;
+import java.util.Enumeration;
 
 /**
  * Dashboard activity - main screen after setup is complete.
@@ -45,6 +51,8 @@ public class DashboardActivity extends Activity {
     private Button mStartButton;
     private Button mStopButton;
     private Button mRestartButton;
+    private View mSshCard;
+    private TextView mSshInfoText;
 
     private OwliaService mOwliaService;
     private boolean mBound = false;
@@ -99,8 +107,14 @@ public class DashboardActivity extends Activity {
         mRestartButton.setOnClickListener(v -> restartGateway());
         openTerminalButton.setOnClickListener(v -> openTerminal());
 
+        mSshCard = findViewById(R.id.ssh_card);
+        mSshInfoText = findViewById(R.id.ssh_info_text);
+
         // Load channel info
         loadChannelInfo();
+
+        // Load SSH info
+        loadSshInfo();
 
         // Bind to service
         Intent intent = new Intent(this, OwliaService.class);
@@ -316,6 +330,37 @@ public class DashboardActivity extends Activity {
                 Logger.logError(LOG_TAG, "Restart failed: " + result.stderr);
             }
         });
+    }
+
+    /**
+     * Load SSH connection info and display in the dashboard
+     */
+    private void loadSshInfo() {
+        String ip = getDeviceIp();
+        if (ip == null) ip = "<device-ip>";
+
+        mSshInfoText.setText("ssh -p 8022 " + ip + "\nPassword: ghost2501");
+        mSshCard.setVisibility(View.VISIBLE);
+    }
+
+    private String getDeviceIp() {
+        try {
+            Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
+            while (interfaces.hasMoreElements()) {
+                NetworkInterface ni = interfaces.nextElement();
+                if (ni.isLoopback() || !ni.isUp()) continue;
+                Enumeration<InetAddress> addresses = ni.getInetAddresses();
+                while (addresses.hasMoreElements()) {
+                    InetAddress addr = addresses.nextElement();
+                    if (addr instanceof Inet4Address) {
+                        return addr.getHostAddress();
+                    }
+                }
+            }
+        } catch (Exception e) {
+            Logger.logError(LOG_TAG, "Failed to get device IP: " + e.getMessage());
+        }
+        return null;
     }
 
     /**

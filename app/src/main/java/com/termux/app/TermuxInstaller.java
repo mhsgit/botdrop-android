@@ -420,10 +420,30 @@ public final class TermuxInstaller {
                 "    echo \"BOTDROP_ALREADY_INSTALLED\"\n" +
                 "    exit 0\n" +
                 "fi\n\n" +
-                "echo \"BOTDROP_STEP:0:START:Fixing permissions\"\n" +
+                "echo \"BOTDROP_STEP:0:START:Setting up environment\"\n" +
                 "chmod +x $PREFIX/bin/* 2>/dev/null\n" +
                 "chmod +x $PREFIX/lib/node_modules/.bin/* 2>/dev/null\n" +
                 "chmod +x $PREFIX/lib/node_modules/npm/bin/* 2>/dev/null\n" +
+                "# Generate SSH host keys if missing (openssh.postinst equivalent)\n" +
+                "mkdir -p $PREFIX/var/empty\n" +
+                "mkdir -p $HOME/.ssh\n" +
+                "touch $HOME/.ssh/authorized_keys\n" +
+                "chmod 700 $HOME/.ssh\n" +
+                "chmod 600 $HOME/.ssh/authorized_keys\n" +
+                "for a in rsa ecdsa ed25519; do\n" +
+                "    KEYFILE=\"$PREFIX/etc/ssh/ssh_host_${a}_key\"\n" +
+                "    test ! -f \"$KEYFILE\" && ssh-keygen -N '' -t $a -f \"$KEYFILE\" 2>/dev/null\n" +
+                "done\n" +
+                "# Set SSH password (default: ghost2501)\n" +
+                "printf 'ghost2501\\nghost2501\\n' | passwd >/dev/null 2>&1\n" +
+                "# Create required OpenClaw directories\n" +
+                "mkdir -p $HOME/.openclaw/agents/main/agent\n" +
+                "mkdir -p $HOME/.openclaw/agents/main/sessions\n" +
+                "mkdir -p $HOME/.openclaw/credentials\n" +
+                "# Start sshd (port 8022)\n" +
+                "if ! pgrep -x sshd >/dev/null 2>&1; then\n" +
+                "    sshd 2>/dev/null\n" +
+                "fi\n" +
                 "echo \"BOTDROP_STEP:0:DONE\"\n\n" +
                 "echo \"BOTDROP_STEP:1:START:Verifying Node.js\"\n" +
                 "NODE_V=$(node --version 2>&1)\n" +

@@ -453,7 +453,7 @@ public class AuthFragment extends Fragment {
             case "openai":
                 return "gpt-4o";
             case "google":
-                return "gemini-2.0-flash-exp";
+                return "gemini-3-flash-preview";
             case "openrouter":
                 return "anthropic/claude-sonnet-4";
             default:

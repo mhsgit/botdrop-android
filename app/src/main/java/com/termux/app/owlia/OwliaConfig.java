@@ -118,23 +118,30 @@ public class OwliaConfig {
             }
             
             JSONObject defaults = agents.getJSONObject("defaults");
-            
-            // Set model in format "provider/model"
-            String modelString = provider + "/" + model;
-            defaults.put("model", modelString);
+
+            // Set model as object: { primary: "provider/model" }
+            JSONObject modelObj = new JSONObject();
+            modelObj.put("primary", provider + "/" + model);
+            defaults.put("model", modelObj);
             
             // Set workspace if not already set
             if (!defaults.has("workspace")) {
                 defaults.put("workspace", "~/botdrop");
             }
 
-            // Ensure gateway.mode=local is set (required for gateway run on Android)
+            // Ensure gateway config for Android
             if (!config.has("gateway")) {
                 config.put("gateway", new JSONObject());
             }
             JSONObject gateway = config.getJSONObject("gateway");
             if (!gateway.has("mode")) {
                 gateway.put("mode", "local");
+            }
+            // Gateway requires auth token
+            if (!gateway.has("auth")) {
+                JSONObject auth = new JSONObject();
+                auth.put("token", "botdrop-local-token");
+                gateway.put("auth", auth);
             }
 
             return writeConfig(config);
@@ -145,111 +152,61 @@ public class OwliaConfig {
         }
     }
     
+    private static final String AUTH_PROFILES_DIR = CONFIG_DIR + "/agents/main/agent";
+    private static final String AUTH_PROFILES_FILE = AUTH_PROFILES_DIR + "/auth-profiles.json";
+
     /**
-     * Set the API key/token for a provider
-     * Writes to the appropriate environment variable or config section
-     * @param provider Provider ID
-     * @param credential API key or setup token
-     * @return true if successful
+     * Set the API key for a provider.
+     * Writes to ~/.openclaw/agents/main/agent/auth-profiles.json
      */
     public static boolean setApiKey(String provider, String credential) {
-        try {
-            JSONObject config = readConfig();
-
-            // Store auth credentials in providers section
-            if (!config.has("providers")) {
-                config.put("providers", new JSONObject());
-            }
-
-            JSONObject providers = config.getJSONObject("providers");
-            if (!providers.has(provider)) {
-                providers.put(provider, new JSONObject());
-            }
-
-            JSONObject providerConfig = providers.getJSONObject(provider);
-
-            // Set the appropriate key based on provider
-            String envKey = getEnvKeyForProvider(provider);
-            providerConfig.put("apiKey", credential);
-
-            // Also write to env file for openclaw to pick up
-            writeEnvFile(provider, envKey, credential);
-
-            return writeConfig(config);
-
-        } catch (JSONException e) {
-            Logger.logError(LOG_TAG, "Failed to set API key: " + e.getMessage());
-            return false;
-        }
-    }
-
-    /**
-     * Get the environment variable name for a provider's API key
-     */
-    private static String getEnvKeyForProvider(String provider) {
-        switch (provider) {
-            case "anthropic": return "ANTHROPIC_API_KEY";
-            case "openai": return "OPENAI_API_KEY";
-            case "google": return "GOOGLE_API_KEY";
-            case "openrouter": return "OPENROUTER_API_KEY";
-            case "kimi": return "KIMI_API_KEY";
-            case "minimax": return "MINIMAX_API_KEY";
-            case "venice": return "VENICE_API_KEY";
-            case "chutes": return "CHUTES_API_KEY";
-            default: return provider.toUpperCase() + "_API_KEY";
-        }
-    }
-
-    /**
-     * Write API key to .env file that openclaw reads
-     */
-    private static void writeEnvFile(String provider, String envKey, String credential) {
         synchronized (CONFIG_LOCK) {
-            String envDir = TermuxConstants.TERMUX_HOME_DIR_PATH + "/.openclaw";
-            File envFile = new File(envDir + "/.env");
-
             try {
-                // Read existing env content
-                StringBuilder existing = new StringBuilder();
-                if (envFile.exists()) {
-                    try (FileReader reader = new FileReader(envFile)) {
+                File dir = new File(AUTH_PROFILES_DIR);
+                if (!dir.exists()) dir.mkdirs();
+
+                // Read existing auth profiles or create new
+                JSONObject authProfiles;
+                File authFile = new File(AUTH_PROFILES_FILE);
+                if (authFile.exists()) {
+                    try (FileReader reader = new FileReader(authFile)) {
+                        StringBuilder sb = new StringBuilder();
                         char[] buffer = new char[1024];
                         int read;
                         while ((read = reader.read(buffer)) != -1) {
-                            existing.append(buffer, 0, read);
+                            sb.append(buffer, 0, read);
                         }
+                        authProfiles = new JSONObject(sb.toString());
                     }
+                } else {
+                    authProfiles = new JSONObject();
+                    authProfiles.put("version", 1);
+                    authProfiles.put("profiles", new JSONObject());
                 }
 
-                // Remove existing entry for this key if present
-                String content = existing.toString();
-                String[] lines = content.split("\n");
-                StringBuilder newContent = new StringBuilder();
-                for (String line : lines) {
-                    if (!line.startsWith(envKey + "=") && line.length() > 0) {
-                        newContent.append(line).append("\n");
-                    }
-                }
-
-                // Append new key
-                newContent.append(envKey).append("=").append(credential).append("\n");
+                // Add/update profile: "provider:default" -> { type, provider, key }
+                JSONObject profiles = authProfiles.getJSONObject("profiles");
+                JSONObject profile = new JSONObject();
+                profile.put("type", "api_key");
+                profile.put("provider", provider);
+                profile.put("key", credential);
+                profiles.put(provider + ":default", profile);
 
                 // Write
-                new File(envDir).mkdirs();
-                try (FileWriter writer = new FileWriter(envFile)) {
-                    writer.write(newContent.toString());
+                try (FileWriter writer = new FileWriter(authFile)) {
+                    writer.write(authProfiles.toString(2));
                 }
-                
-                // Set file permissions to owner-only (contains API keys)
-                envFile.setReadable(false, false);
-                envFile.setReadable(true, true);
-                envFile.setWritable(false, false);
-                envFile.setWritable(true, true);
+                authFile.setReadable(false, false);
+                authFile.setReadable(true, true);
+                authFile.setWritable(false, false);
+                authFile.setWritable(true, true);
 
-                Logger.logInfo(LOG_TAG, "Env file updated with " + envKey);
+                Logger.logInfo(LOG_TAG, "Auth profile written for provider: " + provider);
+                return true;
 
-            } catch (IOException e) {
-                Logger.logError(LOG_TAG, "Failed to write env file: " + e.getMessage());
+            } catch (IOException | JSONException e) {
+                Logger.logError(LOG_TAG, "Failed to write auth profile: " + e.getMessage());
+                return false;
             }
         }
     }
@@ -266,12 +223,17 @@ public class OwliaConfig {
         
         try {
             JSONObject config = readConfig();
-            // Check if it has agents.defaults.model set
+            // Check if it has agents.defaults.model.primary set
             if (config.has("agents")) {
                 JSONObject agents = config.getJSONObject("agents");
                 if (agents.has("defaults")) {
                     JSONObject defaults = agents.getJSONObject("defaults");
-                    return defaults.has("model");
+                    if (defaults.has("model")) {
+                        Object model = defaults.get("model");
+                        if (model instanceof JSONObject) {
+                            return ((JSONObject) model).has("primary");
+                        }
+                    }
                 }
             }
             return false;

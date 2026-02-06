@@ -106,15 +106,31 @@ public class OwliaService extends Service {
         StringBuilder stderr = new StringBuilder();
         int exitCode = -1;
         Process process = null;
+        java.io.File tmpScript = null;
 
         try {
-            ProcessBuilder pb = new ProcessBuilder("sh", "-c", command);
+            // Write command to temp script file (same approach as installOpenclaw —
+            // ProcessBuilder with script files works reliably, bash -c does not)
+            java.io.File tmpDir = new java.io.File(TermuxConstants.TERMUX_TMP_PREFIX_DIR_PATH);
+            if (!tmpDir.exists()) tmpDir.mkdirs();
+            tmpScript = new java.io.File(tmpDir,
+                "cmd_" + System.currentTimeMillis() + ".sh");
+            try (java.io.FileWriter fw = new java.io.FileWriter(tmpScript)) {
+                fw.write("#!/data/data/com.termux/files/usr/bin/bash\n");
+                fw.write(command);
+                fw.write("\n");
+            }
+            tmpScript.setExecutable(true);
+
+            ProcessBuilder pb = new ProcessBuilder(
+                TermuxConstants.TERMUX_BIN_PREFIX_DIR_PATH + "/bash", tmpScript.getAbsolutePath());
 
             // Set Termux environment variables
             pb.environment().put("PREFIX", TermuxConstants.TERMUX_PREFIX_DIR_PATH);
             pb.environment().put("HOME", TermuxConstants.TERMUX_HOME_DIR_PATH);
             pb.environment().put("PATH", TermuxConstants.TERMUX_BIN_PREFIX_DIR_PATH + ":" + System.getenv("PATH"));
             pb.environment().put("TMPDIR", TermuxConstants.TERMUX_TMP_PREFIX_DIR_PATH);
+            pb.environment().put("LD_LIBRARY_PATH", TermuxConstants.TERMUX_PREFIX_DIR_PATH + "/lib");
 
             pb.redirectErrorStream(false);
 
@@ -155,12 +171,13 @@ public class OwliaService extends Service {
 
         } catch (IOException | InterruptedException e) {
             Logger.logError(LOG_TAG, "Command execution failed: " + e.getMessage());
-            // Clean up process on exception
             if (process != null) {
                 process.destroy();
             }
             return new CommandResult(false, stdout.toString(),
                 stderr.toString() + "\nException: " + e.getMessage(), exitCode);
+        } finally {
+            if (tmpScript != null) tmpScript.delete();
         }
     }
 
@@ -202,6 +219,10 @@ public class OwliaService extends Service {
                 Logger.logInfo(LOG_TAG, "Starting install via " + INSTALL_SCRIPT);
                 process = pb.start();
 
+                // Collect last lines of output for error reporting
+                final java.util.LinkedList<String> recentLines = new java.util.LinkedList<>();
+                final int MAX_RECENT = 20;
+
                 try (BufferedReader reader = new BufferedReader(
                     new InputStreamReader(process.getInputStream())
                 )) {
@@ -209,6 +230,8 @@ public class OwliaService extends Service {
                     while ((line = reader.readLine()) != null) {
                         Logger.logVerbose(LOG_TAG, "install.sh: " + line);
                         parseInstallOutput(line, callback);
+                        recentLines.add(line);
+                        if (recentLines.size() > MAX_RECENT) recentLines.removeFirst();
                     }
                 }
 
@@ -221,7 +244,11 @@ public class OwliaService extends Service {
 
                 int exitCode = process.exitValue();
                 if (exitCode != 0) {
-                    mHandler.post(() -> callback.onError("Installation failed (exit code " + exitCode + ")"));
+                    StringBuilder tail = new StringBuilder();
+                    for (String l : recentLines) tail.append(l).append("\n");
+                    String output = tail.toString();
+                    mHandler.post(() -> callback.onError(
+                        "Installation failed (exit code " + exitCode + ")\n\n" + output));
                 }
 
             } catch (IOException | InterruptedException e) {
@@ -351,22 +378,50 @@ public class OwliaService extends Service {
     private static final String GATEWAY_LOG_FILE = TermuxConstants.TERMUX_HOME_DIR_PATH + "/.openclaw/gateway.log";
 
     public void startGateway(CommandCallback callback) {
-        // Kill any existing gateway process first
-        String cmd = "if [ -f " + GATEWAY_PID_FILE + " ]; then " +
-            "kill $(cat " + GATEWAY_PID_FILE + ") 2>/dev/null; rm -f " + GATEWAY_PID_FILE + "; sleep 1; " +
-            "fi && " +
-            // Start gateway in background, log to file, save PID
-            withTermuxChroot("gateway run") + " >> " + GATEWAY_LOG_FILE + " 2>&1 &\n" +
-            "echo $! > " + GATEWAY_PID_FILE + " && " +
-            "sleep 3 && " +
-            // Verify the process is still alive
-            "if kill -0 $(cat " + GATEWAY_PID_FILE + ") 2>/dev/null; then " +
-            "echo 'started'; " +
-            "else " +
-            "echo 'failed'; " +
-            "tail -5 " + GATEWAY_LOG_FILE + " >&2; " +
-            "rm -f " + GATEWAY_PID_FILE + "; " +
-            "exit 1; fi";
+        String logDir = TermuxConstants.TERMUX_HOME_DIR_PATH + "/.openclaw";
+        String debugLog = logDir + "/gateway-debug.log";
+        String home = TermuxConstants.TERMUX_HOME_DIR_PATH;
+        String prefix = TermuxConstants.TERMUX_PREFIX_DIR_PATH;
+        // Shell trace (set -x) goes to debug log via fd 2 redirect;
+        // stdout still goes back to Java for success/error reporting.
+        String cmd =
+            "mkdir -p " + logDir + "\n" +
+            "exec 2>" + debugLog + "\n" +
+            "set -x\n" +
+            "echo \"date: $(date)\" >&2\n" +
+            "echo \"id: $(id)\" >&2\n" +
+            "echo \"PATH=$PATH\" >&2\n" +
+            "# sshd\n" +
+            "pgrep -x sshd || sshd || true\n" +
+            "# kill old gateway\n" +
+            "if [ -f " + GATEWAY_PID_FILE + " ]; then\n" +
+            "  kill $(cat " + GATEWAY_PID_FILE + ") 2>/dev/null\n" +
+            "  rm -f " + GATEWAY_PID_FILE + "\n" +
+            "  sleep 1\n" +
+            "fi\n" +
+            "# start gateway\n" +
+            "echo '' > " + GATEWAY_LOG_FILE + "\n" +
+            "export HOME=" + home + "\n" +
+            "export PREFIX=" + prefix + "\n" +
+            "export PATH=$PREFIX/bin:$PATH\n" +
+            "export TMPDIR=$PREFIX/tmp\n" +
+            "$PREFIX/bin/termux-chroot openclaw gateway run >> " + GATEWAY_LOG_FILE + " 2>&1 &\n" +
+            "GW_PID=$!\n" +
+            "echo $GW_PID > " + GATEWAY_PID_FILE + "\n" +
+            "echo \"gateway pid: $GW_PID\" >&2\n" +
+            "sleep 3\n" +
+            "if kill -0 $GW_PID 2>/dev/null; then\n" +
+            "  echo started\n" +
+            "else\n" +
+            "  echo \"gateway died, log:\" >&2\n" +
+            "  cat " + GATEWAY_LOG_FILE + " >&2\n" +
+            "  rm -f " + GATEWAY_PID_FILE + "\n" +
+            "  # return error info to Java via stdout\n" +
+            "  cat " + GATEWAY_LOG_FILE + "\n" +
+            "  echo '---'\n" +
+            "  cat " + debugLog + "\n" +
+            "  exit 1\n" +
+            "fi\n";
         executeCommand(cmd, callback);
     }
 
