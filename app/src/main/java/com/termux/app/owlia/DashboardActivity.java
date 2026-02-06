@@ -1,5 +1,6 @@
 package com.termux.app.owlia;
 
+import android.Manifest;
 import android.app.Activity;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
@@ -7,6 +8,7 @@ import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.ServiceConnection;
+import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -78,6 +80,9 @@ public class DashboardActivity extends Activity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_owlia_dashboard);
 
+        // Request notification permission (Android 13+)
+        requestNotificationPermission();
+
         // Create notification channel
         createNotificationChannel();
 
@@ -119,6 +124,17 @@ public class DashboardActivity extends Activity {
         if (mBound) {
             unbindService(mConnection);
             mBound = false;
+        }
+    }
+
+    /**
+     * Request notification permission for Android 13+
+     */
+    private void requestNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 1001);
+            }
         }
     }
 
