@@ -79,7 +79,7 @@ public class DashboardActivity extends Activity {
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_owlia_dashboard);
+        setContentView(R.layout.activity_botdrop_dashboard);
 
         // Request notification permission (Android 13+)
         requestNotificationPermission();

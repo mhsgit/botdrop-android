@@ -18,12 +18,12 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Background service for executing Owlia-related commands and managing gateway lifecycle.
+ * Background service for executing BotDrop-related commands and managing gateway lifecycle.
  * Handles OpenClaw installation, configuration, and gateway control without showing terminal UI.
  */
 public class OwliaService extends Service {
 
-    private static final String LOG_TAG = "OwliaService";
+    private static final String LOG_TAG = "BotDropService";
 
     private final IBinder mBinder = new LocalBinder();
     private final ExecutorService mExecutor = Executors.newSingleThreadExecutor();

@@ -34,7 +34,7 @@ import org.json.JSONObject;
  */
 public class OwliaLauncherActivity extends Activity {
 
-    private static final String LOG_TAG = "OwliaLauncherActivity";
+    private static final String LOG_TAG = "BotDropLauncherActivity";
     private static final int REQUEST_CODE_NOTIFICATIONS = 1001;
     private static final int REQUEST_CODE_BATTERY_OPTIMIZATION = 1002;
     
@@ -45,7 +45,7 @@ public class OwliaLauncherActivity extends Activity {
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_owlia_launcher);
+        setContentView(R.layout.activity_botdrop_launcher);
 
         mStatusText = findViewById(R.id.launcher_status_text);
     }

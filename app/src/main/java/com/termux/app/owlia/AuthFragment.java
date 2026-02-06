@@ -42,7 +42,7 @@ public class AuthFragment extends Fragment {
     private LinearLayout mMoreProvidersContainer;
     private TextView mMoreToggle;
     
-    // Auth input views (from fragment_owlia_auth_input.xml)
+    // Auth input views (from fragment_botdrop_auth_input.xml)
     private View mAuthInputView;
     private TextView mBackButton;
     private TextView mTitle;
@@ -102,11 +102,11 @@ public class AuthFragment extends Fragment {
         containerLayout.setOrientation(LinearLayout.VERTICAL);
 
         // Inflate provider selection view
-        mProviderSelectionView = inflater.inflate(R.layout.fragment_owlia_auth, containerLayout, false);
+        mProviderSelectionView = inflater.inflate(R.layout.fragment_botdrop_auth, containerLayout, false);
         containerLayout.addView(mProviderSelectionView);
         
         // Inflate auth input view
-        mAuthInputView = inflater.inflate(R.layout.fragment_owlia_auth_input, containerLayout, false);
+        mAuthInputView = inflater.inflate(R.layout.fragment_botdrop_auth_input, containerLayout, false);
         mAuthInputView.setVisibility(View.GONE);
         containerLayout.addView(mAuthInputView);
 
@@ -119,7 +119,7 @@ public class AuthFragment extends Fragment {
     @Override
     public void onStart() {
         super.onStart();
-        // Bind to OwliaService
+        // Bind to BotDropService
         Intent intent = new Intent(getActivity(), OwliaService.class);
         requireActivity().bindService(intent, mConnection, Context.BIND_AUTO_CREATE);
     }

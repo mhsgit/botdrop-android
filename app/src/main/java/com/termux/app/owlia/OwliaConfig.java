@@ -19,7 +19,7 @@ import java.io.IOException;
  */
 public class OwliaConfig {
     
-    private static final String LOG_TAG = "OwliaConfig";
+    private static final String LOG_TAG = "BotDropConfig";
     private static final String CONFIG_DIR = TermuxConstants.TERMUX_HOME_DIR_PATH + "/.config/openclaw";
     private static final String CONFIG_FILE = CONFIG_DIR + "/openclaw.json";
     
@@ -125,7 +125,7 @@ public class OwliaConfig {
             
             // Set workspace if not already set
             if (!defaults.has("workspace")) {
-                defaults.put("workspace", "~/owlia");
+                defaults.put("workspace", "~/botdrop");
             }
             
             return writeConfig(config);

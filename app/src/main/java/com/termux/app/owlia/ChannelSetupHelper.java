@@ -10,7 +10,7 @@ import org.json.JSONObject;
 
 /**
  * Helper for channel setup:
- * - Decode setup codes from @OwliaSetupBot
+ * - Decode setup codes from @BotDropSetupBot
  * - Write channel configuration to openclaw.json
  */
 public class ChannelSetupHelper {
@@ -33,8 +33,8 @@ public class ChannelSetupHelper {
     }
 
     /**
-     * Decode setup code from @OwliaSetupBot
-     * Format: OWLIA-{platform}-{base64_json}
+     * Decode setup code from @BotDropSetupBot
+     * Format: BOTDROP-{platform}-{base64_json}
      * 
      * Platform codes:
      * - tg = Telegram
@@ -49,14 +49,14 @@ public class ChannelSetupHelper {
      *   "created_at": 1234567890
      * }
      * 
-     * @param setupCode The setup code from @OwliaSetupBot
+     * @param setupCode The setup code from @BotDropSetupBot
      * @return SetupCodeData or null if invalid
      */
     public static SetupCodeData decodeSetupCode(String setupCode) {
         try {
-            // Split: OWLIA-tg-xxxxx or OWLIA-dc-xxxxx
+            // Split: BOTDROP-tg-xxxxx or BOTDROP-dc-xxxxx
             String[] parts = setupCode.split("-", 3);
-            if (parts.length != 3 || !parts[0].equals("OWLIA")) {
+            if (parts.length != 3 || !parts[0].equals("BOTDROP")) {
                 Logger.logError(LOG_TAG, "Invalid setup code format");
                 return null;
             }

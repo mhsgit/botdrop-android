@@ -44,7 +44,7 @@ public class SetupActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_owlia_setup);
+        setContentView(R.layout.activity_botdrop_setup);
 
         mViewPager = findViewById(R.id.setup_viewpager);
         mNavigationBar = findViewById(R.id.setup_navigation);

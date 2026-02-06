@@ -53,13 +53,13 @@ android {
         buildConfigField "String", "TERMUX_PACKAGE_VARIANT", "\"" + project.ext.packageVariant + "\"" // Used by TermuxApplication class
 
         manifestPlaceholders.TERMUX_PACKAGE_NAME = "com.termux"
-        manifestPlaceholders.TERMUX_APP_NAME = "Owlia"
-        manifestPlaceholders.TERMUX_API_APP_NAME = "Owlia:API"
-        manifestPlaceholders.TERMUX_BOOT_APP_NAME = "Owlia:Boot"
-        manifestPlaceholders.TERMUX_FLOAT_APP_NAME = "Owlia:Float"
-        manifestPlaceholders.TERMUX_STYLING_APP_NAME = "Owlia:Styling"
-        manifestPlaceholders.TERMUX_TASKER_APP_NAME = "Owlia:Tasker"
-        manifestPlaceholders.TERMUX_WIDGET_APP_NAME = "Owlia:Widget"
+        manifestPlaceholders.TERMUX_APP_NAME = "BotDrop"
+        manifestPlaceholders.TERMUX_API_APP_NAME = "BotDrop:API"
+        manifestPlaceholders.TERMUX_BOOT_APP_NAME = "BotDrop:Boot"
+        manifestPlaceholders.TERMUX_FLOAT_APP_NAME = "BotDrop:Float"
+        manifestPlaceholders.TERMUX_STYLING_APP_NAME = "BotDrop:Styling"
+        manifestPlaceholders.TERMUX_TASKER_APP_NAME = "BotDrop:Tasker"
+        manifestPlaceholders.TERMUX_WIDGET_APP_NAME = "BotDrop:Widget"
 
         ndk {
             abiFilters 'arm64-v8a'
@@ -137,10 +137,10 @@ android {
         variant.outputs.all { output ->
             if (variant.buildType.name == "debug") {
                 def abi = output.getFilter(com.android.build.OutputFile.ABI)
-                outputFileName = new File("owlia-app_" + (apkVersionTag ? apkVersionTag : project.ext.packageVariant + "-" + "debug") + "_" + (abi ? abi : "universal") + ".apk")
+                outputFileName = new File("botdrop-app_" + (apkVersionTag ? apkVersionTag : project.ext.packageVariant + "-" + "debug") + "_" + (abi ? abi : "universal") + ".apk")
             } else if (variant.buildType.name == "release") {
                 def abi = output.getFilter(com.android.build.OutputFile.ABI)
-                outputFileName = new File("owlia-app_" + (apkVersionTag ? apkVersionTag : project.ext.packageVariant + "-" + "release") + "_" + (abi ? abi : "universal") + ".apk")
+                outputFileName = new File("botdrop-app_" + (apkVersionTag ? apkVersionTag : project.ext.packageVariant + "-" + "release") + "_" + (abi ? abi : "universal") + ".apk")
             }
         }
     }
@@ -179,7 +179,8 @@ def downloadBootstrap(String arch) {
         return
     }
 
-    def remoteUrl = "https://github.com/louzhixian/owlia-packages/releases/latest/download/bootstrap-" + arch + ".zip"
+    // TODO: Confirm GitHub repo has been renamed from owlia-packages to botdrop-packages
+    def remoteUrl = "https://github.com/louzhixian/botdrop-packages/releases/latest/download/bootstrap-" + arch + ".zip"
     logger.quiet("Downloading " + remoteUrl + " ...")
 
     file.parentFile.mkdirs()
@@ -203,7 +204,7 @@ clean {
 
 task downloadBootstraps() {
     doLast {
-        // Download bootstrap packages from owlia-packages latest release
+        // Download bootstrap packages from botdrop-packages latest release
         // Supports both apt-android-7 and apt-android-5 variants
         downloadBootstrap("aarch64")
     }

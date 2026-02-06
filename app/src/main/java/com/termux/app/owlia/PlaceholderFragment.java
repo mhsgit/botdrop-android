@@ -43,7 +43,7 @@ public class PlaceholderFragment extends Fragment {
     @Override
     public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container,
                              @Nullable Bundle savedInstanceState) {
-        View view = inflater.inflate(R.layout.fragment_owlia_placeholder, container, false);
+        View view = inflater.inflate(R.layout.fragment_botdrop_placeholder, container, false);
 
         TextView titleView = view.findViewById(R.id.placeholder_title);
         TextView messageView = view.findViewById(R.id.placeholder_message);

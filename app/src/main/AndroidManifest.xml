@@ -86,7 +86,7 @@
             </intent-filter>
         </activity-alias>
 
-        <!-- Owlia GUI Components -->
+        <!-- BotDrop GUI Components -->
         <activity
             android:name=".app.owlia.OwliaLauncherActivity"
             android:exported="true"

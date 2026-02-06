@@ -76,7 +76,7 @@ public class InstallFragment extends Fragment {
     @Override
     public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container,
                              @Nullable Bundle savedInstanceState) {
-        View view = inflater.inflate(R.layout.fragment_owlia_install, container, false);
+        View view = inflater.inflate(R.layout.fragment_botdrop_install, container, false);
 
         // Find all step views
         mStep0Icon = view.findViewById(R.id.install_step_0_icon);
@@ -103,7 +103,7 @@ public class InstallFragment extends Fragment {
     @Override
     public void onStart() {
         super.onStart();
-        // Bind to OwliaService
+        // Bind to BotDropService
         Intent intent = new Intent(getActivity(), OwliaService.class);
         requireActivity().bindService(intent, mConnection, Context.BIND_AUTO_CREATE);
     }
