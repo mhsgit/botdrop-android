@@ -15,7 +15,7 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="🦉 Owlia"
+            android:text="💧 BotDrop"
             android:textSize="24sp"
             android:textStyle="bold"
             android:gravity="center"
@@ -209,7 +209,7 @@
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="Chat with Owlia on your connected channel to configure more settings, add channels, or change models."
+                    android:text="Chat with BotDrop on your connected channel to configure more settings, add channels, or change models."
                     android:textSize="14sp"
                     android:textColor="?android:attr/textColorPrimary" />
             </LinearLayout>

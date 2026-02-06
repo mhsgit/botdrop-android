@@ -649,7 +649,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         menu.add(Menu.NONE, CONTEXT_MENU_HELP_ID, Menu.NONE, R.string.action_open_help);
         menu.add(Menu.NONE, CONTEXT_MENU_SETTINGS_ID, Menu.NONE, R.string.action_open_settings);
         menu.add(Menu.NONE, CONTEXT_MENU_REPORT_ID, Menu.NONE, R.string.action_report_issue);
-        menu.add(Menu.NONE, CONTEXT_MENU_OWLIA_DASHBOARD_ID, Menu.NONE, "🦉 Owlia Dashboard");
+        menu.add(Menu.NONE, CONTEXT_MENU_OWLIA_DASHBOARD_ID, Menu.NONE, "💧 BotDrop Dashboard");
     }
 
     /** Hook system menu to show context menu instead. */

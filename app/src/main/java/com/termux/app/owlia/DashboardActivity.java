@@ -35,7 +35,7 @@ import org.json.JSONObject;
 public class DashboardActivity extends Activity {
 
     private static final String LOG_TAG = "DashboardActivity";
-    public static final String NOTIFICATION_CHANNEL_ID = "owlia_gateway";
+    public static final String NOTIFICATION_CHANNEL_ID = "botdrop_gateway";
     private static final int STATUS_REFRESH_INTERVAL_MS = 5000; // 5 seconds
 
     private TextView mStatusText;
@@ -145,10 +145,10 @@ public class DashboardActivity extends Activity {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             NotificationChannel channel = new NotificationChannel(
                 NOTIFICATION_CHANNEL_ID,
-                "Owlia Gateway",
+                "BotDrop Gateway",
                 NotificationManager.IMPORTANCE_LOW
             );
-            channel.setDescription("Shows when Owlia is running");
+            channel.setDescription("Shows when BotDrop is running");
             channel.setShowBadge(false);
 
             NotificationManager manager = getSystemService(NotificationManager.class);

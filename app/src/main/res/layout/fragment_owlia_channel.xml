@@ -50,7 +50,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:padding="16dp"
-                android:text="⭐ Use @OwliaSetupBot (easy)"
+                android:text="⭐ Use @BotDropSetupBot (easy)"
                 android:textSize="16sp"
                 android:textStyle="bold"
                 android:layout_marginBottom="8dp" />
@@ -102,7 +102,7 @@
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Setup via @OwliaSetupBot"
+                android:text="Setup via @BotDropSetupBot"
                 android:textSize="20sp"
                 android:textStyle="bold"
                 android:textColor="?android:attr/textColorPrimary"
@@ -139,7 +139,7 @@
                 android:id="@+id/channel_setupbot_open"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Open @OwliaSetupBot"
+                android:text="Open @BotDropSetupBot"
                 android:textSize="16sp"
                 android:padding="16dp"
                 android:layout_marginBottom="24dp" />

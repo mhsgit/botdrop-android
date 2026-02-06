@@ -257,26 +257,19 @@ public class OwliaService extends Service {
                 TermuxConstants.TERMUX_PREFIX_DIR_PATH + "/lib/node_modules/openclaw/package.json"
             );
             if (packageJson.exists()) {
-                java.io.BufferedReader reader = new java.io.BufferedReader(
+                // Use try-with-resources to avoid resource leak
+                try (java.io.BufferedReader reader = new java.io.BufferedReader(
                     new java.io.FileReader(packageJson)
-                );
-                StringBuilder content = new StringBuilder();
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    content.append(line);
-                }
-                reader.close();
-                
-                // Simple JSON parse for version
-                String json = content.toString();
-                int versionIdx = json.indexOf("\"version\"");
-                if (versionIdx != -1) {
-                    int colonIdx = json.indexOf(":", versionIdx);
-                    int startQuote = json.indexOf("\"", colonIdx + 1);
-                    int endQuote = json.indexOf("\"", startQuote + 1);
-                    if (startQuote != -1 && endQuote != -1) {
-                        return json.substring(startQuote + 1, endQuote);
+                )) {
+                    StringBuilder content = new StringBuilder();
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        content.append(line);
                     }
+                    
+                    // Use JSONObject for reliable parsing
+                    org.json.JSONObject json = new org.json.JSONObject(content.toString());
+                    return json.optString("version", null);
                 }
             }
         } catch (Exception e) {

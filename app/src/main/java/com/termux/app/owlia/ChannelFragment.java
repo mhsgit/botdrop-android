@@ -27,7 +27,7 @@ import com.termux.shared.logger.Logger;
 /**
  * Step 3 of setup: Channel setup
  * Two options:
- * 1. Use @OwliaSetupBot (guided setup with code)
+ * 1. Use @BotDropSetupBot (guided setup with code)
  * 2. Manual setup (direct token + user ID input)
  */
 public class ChannelFragment extends Fragment {
@@ -157,7 +157,7 @@ public class ChannelFragment extends Fragment {
     private void openSetupBot() {
         String url;
         if (mPlatformTelegram.isChecked()) {
-            url = "https://t.me/OwliaSetupBot";
+            url = "https://t.me/BotDropSetupBot";
         } else if (mPlatformDiscord.isChecked()) {
             // TODO: Update with actual Discord bot invite link when deployed
             url = "https://discord.com/api/oauth2/authorize?client_id=YOUR_BOT_ID&scope=bot";

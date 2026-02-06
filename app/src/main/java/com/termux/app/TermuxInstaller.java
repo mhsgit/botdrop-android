@@ -402,7 +402,7 @@ public final class TermuxInstaller {
             // Create persistent environment script (sourced every login)
             File envScript = new File(profileDir, "owlia-env.sh");
             String envContent =
-                "# Owlia environment setup\n" +
+                "# BotDrop environment setup\n" +
                 "export TMPDIR=$PREFIX/tmp\n" +
                 "mkdir -p $TMPDIR\n\n" +
                 "# Run openclaw through termux-chroot for /tmp support\n" +
@@ -421,12 +421,12 @@ public final class TermuxInstaller {
             // Create the first-run script in profile.d (sourced by login shells, runs once)
             File firstRunScript = new File(profileDir, "owlia-first-run.sh");
             String scriptContent =
-                "# Owlia first-run setup script\n" +
+                "# BotDrop first-run setup script\n" +
                 "# Bootstrap already has: node, npm, git, openssh, proot, termux-api\n" +
                 "# This script: fixes permissions, configures sshd, installs OpenClaw\n\n" +
                 "OWLIA_FIRST_RUN_MARKER=\"$HOME/.owlia_first_run_done\"\n\n" +
                 "if [ ! -f \"$OWLIA_FIRST_RUN_MARKER\" ]; then\n" +
-                "    echo \"\\U0001F989 Welcome to Owlia!\"\n" +
+                "    echo \"\\U0001F4A7 Welcome to BotDrop!\"\n" +
                 "    echo \"\"\n" +
                 "    echo \"Setting up your environment...\"\n" +
                 "    echo \"\"\n\n" +
@@ -492,7 +492,7 @@ public final class TermuxInstaller {
                 "        echo \"\"\n" +
                 "        echo \"✓ OpenClaw installed\"\n" +
                 "        echo \"\"\n" +
-                "        echo \"\\U0001F989 Setup complete! Run 'openclaw onboard' to get started.\"\n" +
+                "        echo \"\\U0001F4A7 Setup complete! Run 'openclaw onboard' to get started.\"\n" +
                 "    else\n" +
                 "        echo \"\"\n" +
                 "        echo \"✗ OpenClaw installation failed\"\n" +

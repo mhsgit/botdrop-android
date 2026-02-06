@@ -55,7 +55,7 @@ public class GatewayMonitorService extends Service {
         if (powerManager != null) {
             mWakeLock = powerManager.newWakeLock(
                 PowerManager.PARTIAL_WAKE_LOCK,
-                "Owlia::GatewayMonitor"
+                "BotDrop::GatewayMonitor"
             );
             mWakeLock.acquire(10*60*1000L /*10 minutes*/);
         }
@@ -66,7 +66,7 @@ public class GatewayMonitorService extends Service {
         Logger.logInfo(LOG_TAG, "Service started");
 
         // Start foreground service with notification
-        Notification notification = buildNotification("Owlia is running");
+        Notification notification = buildNotification("BotDrop is running");
         startForeground(NOTIFICATION_ID, notification);
 
         // Start monitoring if not already monitoring
@@ -199,7 +199,7 @@ public class GatewayMonitorService extends Service {
         NotificationCompat.Builder builder = new NotificationCompat.Builder(
             this, DashboardActivity.NOTIFICATION_CHANNEL_ID
         )
-            .setContentTitle("🦉 Owlia")
+            .setContentTitle("💧 BotDrop")
             .setContentText(contentText)
             .setSmallIcon(R.drawable.ic_service_notification)
             .setContentIntent(pendingIntent)
