@@ -2,12 +2,16 @@ package com.termux.app.owlia;
 
 import android.Manifest;
 import android.app.Activity;
+import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.PowerManager;
+import android.provider.Settings;
 import android.widget.TextView;
 
 import androidx.annotation.Nullable;
@@ -31,8 +35,12 @@ import org.json.JSONObject;
 public class OwliaLauncherActivity extends Activity {
 
     private static final String LOG_TAG = "OwliaLauncherActivity";
+    private static final int REQUEST_CODE_NOTIFICATIONS = 1001;
+    private static final int REQUEST_CODE_BATTERY_OPTIMIZATION = 1002;
+    
     private TextView mStatusText;
     private Handler mHandler = new Handler(Looper.getMainLooper());
+    private boolean mPermissionsRequested = false;
 
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
@@ -40,12 +48,21 @@ public class OwliaLauncherActivity extends Activity {
         setContentView(R.layout.activity_owlia_launcher);
 
         mStatusText = findViewById(R.id.launcher_status_text);
+    }
 
-        // Request permissions immediately on app launch
-        requestPermissions();
-
-        // Check installation state after a short delay to show splash
-        mHandler.postDelayed(this::checkAndRoute, 500);
+    @Override
+    protected void onResume() {
+        super.onResume();
+        
+        // Request permissions when activity is in foreground (visible to user)
+        if (!mPermissionsRequested) {
+            mPermissionsRequested = true;
+            // Delay slightly to ensure activity is fully visible
+            mHandler.postDelayed(this::requestAllPermissions, 300);
+        } else {
+            // Already requested permissions, proceed with routing
+            mHandler.postDelayed(this::checkAndRoute, 500);
+        }
     }
 
     @Override
@@ -56,14 +73,73 @@ public class OwliaLauncherActivity extends Activity {
     }
 
     /**
-     * Request all required permissions upfront
+     * Request all required permissions upfront when activity is visible
      */
-    private void requestPermissions() {
-        // Notification permission (Android 13+)
+    private void requestAllPermissions() {
+        // Step 1: Request notification permission (Android 13+)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-                requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 1001);
+                Logger.logInfo(LOG_TAG, "Requesting notification permission");
+                requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, REQUEST_CODE_NOTIFICATIONS);
+                return; // Wait for result before continuing
             }
+        }
+        
+        // Step 2: Request battery optimization exemption
+        requestBatteryOptimizationExemption();
+    }
+
+    /**
+     * Request exemption from battery optimization to allow background running
+     */
+    private void requestBatteryOptimizationExemption() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
+            if (pm != null && !pm.isIgnoringBatteryOptimizations(getPackageName())) {
+                Logger.logInfo(LOG_TAG, "Requesting battery optimization exemption");
+                try {
+                    Intent intent = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
+                    intent.setData(Uri.parse("package:" + getPackageName()));
+                    startActivityForResult(intent, REQUEST_CODE_BATTERY_OPTIMIZATION);
+                    return; // Wait for result before continuing
+                } catch (Exception e) {
+                    Logger.logError(LOG_TAG, "Failed to request battery optimization exemption: " + e.getMessage());
+                }
+            }
+        }
+        
+        // All permissions handled, proceed with routing
+        mHandler.postDelayed(this::checkAndRoute, 500);
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        
+        if (requestCode == REQUEST_CODE_NOTIFICATIONS) {
+            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                Logger.logInfo(LOG_TAG, "Notification permission granted");
+            } else {
+                Logger.logWarn(LOG_TAG, "Notification permission denied");
+            }
+            // Continue to battery optimization request
+            requestBatteryOptimizationExemption();
+        }
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        
+        if (requestCode == REQUEST_CODE_BATTERY_OPTIMIZATION) {
+            PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
+            if (pm != null && pm.isIgnoringBatteryOptimizations(getPackageName())) {
+                Logger.logInfo(LOG_TAG, "Battery optimization exemption granted");
+            } else {
+                Logger.logWarn(LOG_TAG, "Battery optimization exemption denied");
+            }
+            // Proceed with routing regardless of result
+            mHandler.postDelayed(this::checkAndRoute, 500);
         }
     }
 
