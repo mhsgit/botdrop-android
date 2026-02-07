@@ -188,7 +188,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     private static final int CONTEXT_MENU_HELP_ID = 7;
     private static final int CONTEXT_MENU_SETTINGS_ID = 8;
     private static final int CONTEXT_MENU_REPORT_ID = 9;
-    private static final int CONTEXT_MENU_OWLIA_DASHBOARD_ID = 12;
+    private static final int CONTEXT_MENU_BOTDROP_DASHBOARD_ID = 12;
 
     private static final String ARG_TERMINAL_TOOLBAR_TEXT_INPUT = "terminal_toolbar_text_input";
     private static final String ARG_ACTIVITY_RECREATED = "activity_recreated";
@@ -649,7 +649,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         menu.add(Menu.NONE, CONTEXT_MENU_HELP_ID, Menu.NONE, R.string.action_open_help);
         menu.add(Menu.NONE, CONTEXT_MENU_SETTINGS_ID, Menu.NONE, R.string.action_open_settings);
         menu.add(Menu.NONE, CONTEXT_MENU_REPORT_ID, Menu.NONE, R.string.action_report_issue);
-        menu.add(Menu.NONE, CONTEXT_MENU_OWLIA_DASHBOARD_ID, Menu.NONE, "💧 BotDrop Dashboard");
+        menu.add(Menu.NONE, CONTEXT_MENU_BOTDROP_DASHBOARD_ID, Menu.NONE, "💧 BotDrop Dashboard");
     }
 
     /** Hook system menu to show context menu instead. */
@@ -700,8 +700,8 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             case CONTEXT_MENU_REPORT_ID:
                 mTermuxTerminalViewClient.reportIssueFromTranscript();
                 return true;
-            case CONTEXT_MENU_OWLIA_DASHBOARD_ID:
-                ActivityUtils.startActivity(this, new Intent(this, com.termux.app.owlia.OwliaLauncherActivity.class));
+            case CONTEXT_MENU_BOTDROP_DASHBOARD_ID:
+                ActivityUtils.startActivity(this, new Intent(this, app.botdrop.BotDropLauncherActivity.class));
                 return true;
             default:
                 return super.onContextItemSelected(item);

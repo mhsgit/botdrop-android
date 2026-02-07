@@ -88,7 +88,7 @@
 
         <!-- BotDrop GUI Components -->
         <activity
-            android:name=".app.owlia.OwliaLauncherActivity"
+            android:name="app.botdrop.BotDropLauncherActivity"
             android:exported="true"
             android:theme="@style/Theme.TermuxApp.DayNight.NoActionBar">
             <intent-filter>
@@ -99,21 +99,21 @@
         </activity>
 
         <activity
-            android:name=".app.owlia.SetupActivity"
+            android:name="app.botdrop.SetupActivity"
             android:exported="false"
             android:theme="@style/Theme.TermuxApp.DayNight.NoActionBar" />
 
         <activity
-            android:name=".app.owlia.DashboardActivity"
+            android:name="app.botdrop.DashboardActivity"
             android:exported="false"
             android:theme="@style/Theme.TermuxApp.DayNight.NoActionBar" />
 
         <service
-            android:name=".app.owlia.OwliaService"
+            android:name="app.botdrop.BotDropService"
             android:exported="false" />
 
         <service
-            android:name=".app.owlia.GatewayMonitorService"
+            android:name="app.botdrop.GatewayMonitorService"
             android:exported="false"
             android:foregroundServiceType="specialUse">
             <property
