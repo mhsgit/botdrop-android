@@ -1,15 +1,16 @@
 ---
 name: Feature Request
-about: Suggest an idea for BotDrop
-title: "[Feature] "
+about: Suggest a new feature
+title: ''
 labels: enhancement
+assignees: ''
 ---
 
 **Problem**
-What problem does this solve?
+What problem does this feature solve?
 
 **Proposed Solution**
-How should it work?
+How would you like this to work?
 
 **Alternatives Considered**
-Any other approaches you've thought about?
+Any other approaches you've thought about.

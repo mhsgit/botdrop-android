@@ -1,34 +1,37 @@
 # BotDrop
 
-Run AI agents on your Android phone — no terminal required.
+Run AI agents on your Android phone — no terminal, no CLI, just a guided setup.
 
-BotDrop wraps [OpenClaw](https://openclaw.ai) into a guided mobile experience. Install, configure, and manage your AI agent in 4 simple steps.
+BotDrop wraps [OpenClaw](https://github.com/nicepkg/openclaw) into a user-friendly Android app. Install, configure, and manage your AI agent in 4 simple steps.
 
 ## Features
 
-- **4-step guided setup** — Auth, Agent Selection, Install, Channel Connection
+- **Guided 4-step setup** — Auth → Agent → Install → Channel
 - **Multi-provider support** — Anthropic, OpenAI, Google Gemini, OpenRouter, and more
 - **Telegram & Discord integration** — Chat with your agent through your favorite messenger
-- **Background operation** — Gateway runs as a foreground service with auto-restart
-- **Zero CLI knowledge needed** — Everything happens through the GUI
+- **Background gateway** — Keeps your agent running with auto-restart
+- **No terminal required** — Everything happens through the GUI
 
 ## Screenshots
 
-<!-- TODO: Add screenshots -->
+[TODO: Add screenshots]
 
-## Getting Started
+## Installation
 
-### Download
+### Download APK
 
-Get the latest APK from [Releases](../../releases).
+Download the latest APK from [Releases](../../releases).
 
 ### Build from Source
 
-**Requirements:** Android SDK, NDK, JDK 17+
+Prerequisites:
+- Android SDK (API level 34+)
+- NDK r29+
+- JDK 17+
 
 ```bash
-git clone https://github.com/louzhixian/botdrop-android.git
-cd botdrop-android
+git clone https://github.com/louzhixian/botdrop.git
+cd botdrop
 ./gradlew assembleDebug
 ```
 
@@ -36,34 +39,28 @@ The APK will be at `app/build/outputs/apk/debug/`.
 
 ## Architecture
 
-BotDrop is built on [Termux](https://github.com/termux/termux-app), providing a Linux environment for running Node.js-based AI agents.
+BotDrop is built on [Termux](https://github.com/termux/termux-app), providing a Linux environment for running Node.js-based AI agents on Android.
 
 ```
-+-----------------------------+
-|  BotDrop UI (app.botdrop)   |
-|  Setup - Dashboard - Config |
-+-----------------------------+
-|  Termux Core (com.termux)   |
-|  Shell - Bootstrap - Env    |
-+-----------------------------+
-|  Linux Environment          |
-|  Node.js - OpenClaw - SSH   |
-+-----------------------------+
+┌──────────────────────────────────┐
+│     BotDrop UI (app.botdrop)     │
+├──────────────────────────────────┤
+│     Termux Core (com.termux)     │
+├──────────────────────────────────┤
+│  Linux Environment (proot/apt)   │
+├──────────────────────────────────┤
+│  OpenClaw + Node.js + npm        │
+└──────────────────────────────────┘
 ```
 
-See [docs/design.md](docs/design.md) for detailed architecture documentation.
+See [docs/design.md](docs/design.md) for detailed architecture.
 
 ## Contributing
 
-Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ## License
 
-This project is licensed under the GNU General Public License v3.0 — see [LICENSE](LICENSE) for details.
+This project is licensed under the [GNU General Public License v3.0](LICENSE).
 
 Built on [Termux](https://github.com/termux/termux-app) (GPLv3).
-
-## Credits
-
-- [Termux](https://github.com/termux/termux-app) — Terminal emulator for Android
-- [OpenClaw](https://openclaw.ai) — AI agent framework

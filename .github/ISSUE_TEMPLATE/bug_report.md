@@ -1,25 +1,32 @@
 ---
 name: Bug Report
-about: Report a bug in BotDrop
-title: "[Bug] "
+about: Report a bug to help us improve
+title: ''
 labels: bug
+assignees: ''
 ---
 
-**Device Info**
+**Device Information**
 - Phone model:
 - Android version:
 - BotDrop version:
 
-**Steps to Reproduce**
+**Describe the bug**
+A clear description of what the bug is.
+
+**Steps to reproduce**
 1.
 2.
 3.
 
-**Expected Behavior**
+**Expected behavior**
+What you expected to happen.
 
+**Actual behavior**
+What actually happened.
 
-**Actual Behavior**
+**Logs**
+If applicable, paste relevant logs here.
 
-
-**Logs** (if available)
-
+**Screenshots**
+If applicable, add screenshots.
