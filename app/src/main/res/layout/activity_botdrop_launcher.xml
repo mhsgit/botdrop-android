@@ -33,6 +33,7 @@
                 android:text="Welcome to BotDrop"
                 android:textSize="24sp"
                 android:textStyle="bold"
+                android:textColor="@color/botdrop_on_background"
                 android:layout_marginBottom="8dp" />
 
             <TextView
@@ -41,8 +42,8 @@
                 android:text="BotDrop needs two permissions to run your AI gateway reliably in the background."
                 android:textSize="14sp"
                 android:textAlignment="center"
-                android:layout_marginBottom="32dp"
-                android:alpha="0.7" />
+                android:textColor="@color/botdrop_secondary_text"
+                android:layout_marginBottom="32dp" />
 
             <!-- Notification Permission -->
             <LinearLayout
@@ -64,14 +65,15 @@
                         android:layout_height="wrap_content"
                         android:text="Notifications"
                         android:textSize="16sp"
-                        android:textStyle="bold" />
+                        android:textStyle="bold"
+                        android:textColor="@color/botdrop_on_background" />
 
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="Show gateway status and alerts"
                         android:textSize="13sp"
-                        android:alpha="0.6" />
+                        android:textColor="@color/botdrop_secondary_text" />
                 </LinearLayout>
 
                 <TextView
@@ -88,7 +90,10 @@
                     android:layout_height="40dp"
                     android:text="Allow"
                     android:textSize="13sp"
-                    android:minWidth="80dp" />
+                    android:minWidth="80dp"
+                    android:background="@drawable/botdrop_button_bg"
+                    android:textColor="#1A1A1A"
+                    android:textStyle="bold" />
             </LinearLayout>
 
             <!-- Battery Optimization -->
@@ -111,14 +116,15 @@
                         android:layout_height="wrap_content"
                         android:text="Background Running"
                         android:textSize="16sp"
-                        android:textStyle="bold" />
+                        android:textStyle="bold"
+                        android:textColor="@color/botdrop_on_background" />
 
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="Keep gateway alive when app is in background"
                         android:textSize="13sp"
-                        android:alpha="0.6" />
+                        android:textColor="@color/botdrop_secondary_text" />
                 </LinearLayout>
 
                 <TextView
@@ -135,7 +141,10 @@
                     android:layout_height="40dp"
                     android:text="Allow"
                     android:textSize="13sp"
-                    android:minWidth="80dp" />
+                    android:minWidth="80dp"
+                    android:background="@drawable/botdrop_button_bg"
+                    android:textColor="#1A1A1A"
+                    android:textStyle="bold" />
             </LinearLayout>
 
             <Button
@@ -144,7 +153,10 @@
                 android:layout_height="52dp"
                 android:text="Continue"
                 android:textSize="16sp"
-                android:enabled="false" />
+                android:enabled="false"
+                android:background="@drawable/botdrop_button_bg"
+                android:textColor="#1A1A1A"
+                android:textStyle="bold" />
 
         </LinearLayout>
     </ScrollView>
