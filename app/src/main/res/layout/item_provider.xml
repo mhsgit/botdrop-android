@@ -4,7 +4,7 @@
     android:layout_height="wrap_content"
     android:orientation="horizontal"
     android:padding="16dp"
-    android:background="?android:attr/selectableItemBackground"
+    android:background="@drawable/botdrop_card_bg"
     android:clickable="true"
     android:focusable="true"
     android:layout_marginBottom="8dp">
@@ -39,6 +39,7 @@
                 android:layout_height="wrap_content"
                 android:textSize="16sp"
                 android:textStyle="bold"
+                android:textColor="@color/botdrop_on_background"
                 android:text="Provider Name" />
 
             <TextView
@@ -57,7 +58,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:textSize="13sp"
-            android:alpha="0.7"
+            android:textColor="@color/botdrop_secondary_text"
             android:text="Auth method hint" />
 
     </LinearLayout>

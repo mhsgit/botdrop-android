@@ -4,7 +4,8 @@
     android:layout_height="match_parent"
     android:orientation="vertical"
     android:padding="32dp"
-    android:gravity="center">
+    android:gravity="center"
+    android:background="@color/botdrop_background">
 
     <!-- BotDrop logo -->
     <ImageView
@@ -21,6 +22,7 @@
         android:text="BotDrop"
         android:textSize="32sp"
         android:textStyle="bold"
+        android:textColor="@color/botdrop_on_background"
         android:layout_marginBottom="8dp" />
 
     <!-- Tagline -->
@@ -29,6 +31,7 @@
         android:layout_height="wrap_content"
         android:text="Your AI assistant,\nrunning on your phone."
         android:textSize="16sp"
+        android:textColor="@color/botdrop_secondary_text"
         android:gravity="center"
         android:layout_marginBottom="32dp" />
 
@@ -36,7 +39,7 @@
     <View
         android:layout_width="match_parent"
         android:layout_height="1dp"
-        android:background="?android:attr/dividerHorizontal"
+        android:background="@color/botdrop_surface"
         android:layout_marginBottom="32dp" />
 
     <!-- Installation steps -->
@@ -60,6 +63,7 @@
                 android:layout_height="24dp"
                 android:text="○"
                 android:textSize="18sp"
+                android:textColor="@color/botdrop_accent"
                 android:gravity="center"
                 android:layout_marginEnd="12dp" />
 
@@ -69,7 +73,8 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:text="Environment ready"
-                android:textSize="14sp" />
+                android:textSize="14sp"
+                android:textColor="@color/botdrop_on_background" />
         </LinearLayout>
 
         <!-- Step 1: Verify Node -->
@@ -86,6 +91,7 @@
                 android:layout_height="24dp"
                 android:text="○"
                 android:textSize="18sp"
+                android:textColor="@color/botdrop_accent"
                 android:gravity="center"
                 android:layout_marginEnd="12dp" />
 
@@ -95,7 +101,8 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:text="Verifying Node.js"
-                android:textSize="14sp" />
+                android:textSize="14sp"
+                android:textColor="@color/botdrop_on_background" />
         </LinearLayout>
 
         <!-- Step 2: Install OpenClaw -->
@@ -112,6 +119,7 @@
                 android:layout_height="24dp"
                 android:text="○"
                 android:textSize="18sp"
+                android:textColor="@color/botdrop_accent"
                 android:gravity="center"
                 android:layout_marginEnd="12dp" />
 
@@ -121,7 +129,8 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:text="Installing OpenClaw"
-                android:textSize="14sp" />
+                android:textSize="14sp"
+                android:textColor="@color/botdrop_on_background" />
         </LinearLayout>
 
     </LinearLayout>
@@ -133,7 +142,7 @@
         android:layout_height="wrap_content"
         android:text="This takes about a minute"
         android:textSize="13sp"
-        android:alpha="0.7"
+        android:textColor="@color/botdrop_secondary_text"
         android:layout_marginBottom="16dp" />
 
     <!-- Error container (hidden by default) -->
@@ -142,7 +151,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:background="?android:attr/colorBackground"
+        android:background="@drawable/botdrop_card_bg"
         android:padding="16dp"
         android:layout_marginTop="16dp"
         android:visibility="gone">
@@ -161,7 +170,10 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="Retry"
-            android:layout_gravity="start" />
+            android:layout_gravity="start"
+            android:background="@drawable/botdrop_button_bg"
+            android:textColor="#1A1A1A"
+            android:textStyle="bold" />
 
     </LinearLayout>
 

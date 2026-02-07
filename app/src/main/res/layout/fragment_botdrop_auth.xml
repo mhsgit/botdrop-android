@@ -2,7 +2,8 @@
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:fillViewport="true">
+    android:fillViewport="true"
+    android:background="@color/botdrop_background">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -16,7 +17,7 @@
             android:layout_height="wrap_content"
             android:text="← Step 2/3"
             android:textSize="14sp"
-            android:alpha="0.7"
+            android:textColor="@color/botdrop_secondary_text"
             android:layout_marginBottom="16dp" />
 
         <TextView
@@ -25,6 +26,7 @@
             android:text="Choose your AI"
             android:textSize="24sp"
             android:textStyle="bold"
+            android:textColor="@color/botdrop_on_background"
             android:layout_marginBottom="24dp" />
 
         <!-- Popular Providers Section -->
@@ -34,6 +36,7 @@
             android:text="Popular"
             android:textSize="16sp"
             android:textStyle="bold"
+            android:textColor="@color/botdrop_on_background"
             android:layout_marginBottom="12dp" />
 
         <!-- Provider cards will be added programmatically -->
@@ -57,6 +60,7 @@
                 android:layout_height="wrap_content"
                 android:text="More providers ▼"
                 android:textSize="14sp"
+                android:textColor="@color/botdrop_accent"
                 android:clickable="true"
                 android:focusable="true"
                 android:padding="8dp"

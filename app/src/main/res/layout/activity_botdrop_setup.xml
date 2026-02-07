@@ -3,7 +3,7 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:background="?android:attr/colorBackground">
+    android:background="@color/botdrop_background">
 
     <!-- Top bar with Open Terminal button -->
     <LinearLayout
@@ -15,11 +15,12 @@
 
         <Button
             android:id="@+id/setup_open_terminal"
-            style="?android:attr/buttonBarButtonStyle"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="🖥 Terminal"
-            android:textSize="12sp" />
+            android:textSize="12sp"
+            android:background="@drawable/botdrop_button_outline_bg"
+            android:textColor="@color/botdrop_accent" />
     </LinearLayout>
 
     <androidx.viewpager2.widget.ViewPager2
@@ -40,18 +41,21 @@
 
         <Button
             android:id="@+id/setup_button_back"
-            style="?android:attr/buttonBarButtonStyle"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="Back"
-            android:layout_marginEnd="8dp" />
+            android:layout_marginEnd="8dp"
+            android:background="@drawable/botdrop_button_outline_bg"
+            android:textColor="@color/botdrop_accent" />
 
         <Button
             android:id="@+id/setup_button_next"
-            style="?android:attr/buttonBarButtonStyle"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Next" />
+            android:text="Next"
+            android:background="@drawable/botdrop_button_bg"
+            android:textColor="#1A1A1A"
+            android:textStyle="bold" />
 
     </LinearLayout>
 

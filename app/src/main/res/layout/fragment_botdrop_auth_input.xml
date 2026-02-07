@@ -2,7 +2,8 @@
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:fillViewport="true">
+    android:fillViewport="true"
+    android:background="@color/botdrop_background">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -17,6 +18,7 @@
             android:layout_height="wrap_content"
             android:text="← Back"
             android:textSize="14sp"
+            android:textColor="@color/botdrop_accent"
             android:clickable="true"
             android:focusable="true"
             android:padding="8dp"
@@ -29,6 +31,7 @@
             android:text="Provider Auth"
             android:textSize="24sp"
             android:textStyle="bold"
+            android:textColor="@color/botdrop_on_background"
             android:layout_marginBottom="24dp" />
 
         <!-- Instructions (varies by auth method) -->
@@ -37,6 +40,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:textSize="14sp"
+            android:textColor="@color/botdrop_secondary_text"
             android:lineSpacingMultiplier="1.3"
             android:layout_marginBottom="24dp" />
 
@@ -55,13 +59,14 @@
                 android:text="API Key"
                 android:textSize="14sp"
                 android:textStyle="bold"
+                android:textColor="@color/botdrop_on_background"
                 android:layout_marginBottom="8dp" />
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="horizontal"
-                android:background="?android:attr/editTextBackground"
+                android:background="@drawable/botdrop_input_bg"
                 android:padding="4dp">
 
                 <EditText
@@ -72,6 +77,8 @@
                     android:hint="Paste your key here"
                     android:inputType="textPassword"
                     android:background="@android:color/transparent"
+                    android:textColor="@color/botdrop_on_background"
+                    android:textColorHint="@color/botdrop_secondary_text"
                     android:padding="12dp" />
 
                 <!-- Toggle visibility button -->
@@ -94,7 +101,10 @@
             android:layout_height="wrap_content"
             android:text="Open Browser to Sign In"
             android:visibility="gone"
-            android:layout_marginBottom="16dp" />
+            android:layout_marginBottom="16dp"
+            android:background="@drawable/botdrop_button_bg"
+            android:textColor="#1A1A1A"
+            android:textStyle="bold" />
 
         <!-- Status message (success/error) -->
         <LinearLayout
@@ -102,6 +112,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
+            android:background="@drawable/botdrop_card_bg"
             android:padding="12dp"
             android:layout_marginTop="16dp"
             android:visibility="gone">
@@ -110,7 +121,8 @@
                 android:id="@+id/auth_input_status_text"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:textSize="14sp" />
+                android:textSize="14sp"
+                android:textColor="@color/botdrop_on_background" />
 
         </LinearLayout>
 
@@ -120,7 +132,10 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="Verify &amp; Continue"
-            android:layout_marginTop="24dp" />
+            android:layout_marginTop="24dp"
+            android:background="@drawable/botdrop_button_bg"
+            android:textColor="#1A1A1A"
+            android:textStyle="bold" />
 
     </LinearLayout>
 
