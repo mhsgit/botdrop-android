@@ -116,7 +116,7 @@ public class BotDropService extends Service {
             tmpScript = new java.io.File(tmpDir,
                 "cmd_" + System.currentTimeMillis() + ".sh");
             try (java.io.FileWriter fw = new java.io.FileWriter(tmpScript)) {
-                fw.write("#!/data/data/com.termux/files/usr/bin/bash\n");
+                fw.write("#!" + com.termux.shared.termux.TermuxConstants.TERMUX_BIN_PREFIX_DIR_PATH + "/bash\n");
                 fw.write(command);
                 fw.write("\n");
             }

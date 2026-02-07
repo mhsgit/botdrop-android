@@ -411,7 +411,7 @@ public final class TermuxInstaller {
 
             File installScript = new File(botdropDir, "install.sh");
             String installContent =
-                "#!/data/data/com.termux/files/usr/bin/bash\n" +
+                "#!" + com.termux.shared.termux.TermuxConstants.TERMUX_BIN_PREFIX_DIR_PATH + "/bash\n" +
                 "# BotDrop install script — single source of truth\n" +
                 "# Called by: GUI (ProcessBuilder) and terminal (profile.d)\n" +
                 "# Outputs structured lines for GUI progress parsing.\n\n" +
