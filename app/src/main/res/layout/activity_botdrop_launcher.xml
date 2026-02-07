@@ -184,6 +184,7 @@
             android:text="BotDrop"
             android:textSize="24sp"
             android:textStyle="bold"
+            android:textColor="@color/botdrop_on_background"
             android:layout_marginBottom="8dp" />
 
         <ProgressBar
@@ -198,7 +199,8 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
             android:text="Checking installation..."
-            android:textSize="14sp" />
+            android:textSize="14sp"
+            android:textColor="@color/botdrop_secondary_text" />
 
     </LinearLayout>
 
