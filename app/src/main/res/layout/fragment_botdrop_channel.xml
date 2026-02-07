@@ -52,7 +52,7 @@
             style="?android:attr/buttonBarButtonStyle"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="💧 Open @BotDropSetupBot"
+            android:text="Open @BotDropSetupBot"
             android:textSize="16sp"
             android:padding="16dp"
             android:layout_marginBottom="24dp" />

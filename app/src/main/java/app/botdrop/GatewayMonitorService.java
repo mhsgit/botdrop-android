@@ -296,7 +296,7 @@ public class GatewayMonitorService extends Service {
         NotificationCompat.Builder builder = new NotificationCompat.Builder(
             this, DashboardActivity.NOTIFICATION_CHANNEL_ID
         )
-            .setContentTitle("💧 BotDrop")
+            .setContentTitle("BotDrop")
             .setContentText(contentText)
             .setSmallIcon(R.drawable.ic_service_notification)
             .setContentIntent(pendingIntent)

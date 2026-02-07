@@ -6,12 +6,12 @@
     android:padding="32dp"
     android:gravity="center">
 
-    <!-- Owl icon -->
-    <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="💧"
-        android:textSize="64sp"
+    <!-- BotDrop logo -->
+    <ImageView
+        android:layout_width="64dp"
+        android:layout_height="64dp"
+        android:src="@drawable/botdrop_logo"
+        android:contentDescription="BotDrop"
         android:layout_marginBottom="16dp" />
 
     <!-- BotDrop title -->
