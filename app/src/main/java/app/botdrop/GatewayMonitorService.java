@@ -49,6 +49,7 @@ public class GatewayMonitorService extends Service {
     private boolean mIsMonitoring = false;
     private String mCurrentStatus = "Starting...";
     private int mRestartAttempts = 0;
+    private boolean mRestartInFlight = false;
 
     /**
      * Service connection for binding to BotDropService
@@ -194,6 +195,12 @@ public class GatewayMonitorService extends Service {
             return;
         }
 
+        // Avoid restart storms while a (re)start is already running.
+        if (mRestartInFlight) {
+            Logger.logDebug(LOG_TAG, "Restart already in-flight, skipping check");
+            return;
+        }
+
         try {
             mBotDropService.isGatewayRunning(result -> {
                 try {
@@ -228,6 +235,11 @@ public class GatewayMonitorService extends Service {
             return;
         }
 
+        if (mRestartInFlight) {
+            Logger.logDebug(LOG_TAG, "restartGateway called while already in-flight, ignoring");
+            return;
+        }
+
         // Check if we've exceeded max restart attempts
         if (mRestartAttempts >= MAX_RESTART_ATTEMPTS) {
             Logger.logError(LOG_TAG, "Max restart attempts (" + MAX_RESTART_ATTEMPTS + ") reached");
@@ -236,11 +248,13 @@ public class GatewayMonitorService extends Service {
         }
 
         mRestartAttempts++;
+        mRestartInFlight = true;
         Logger.logInfo(LOG_TAG, "Restart attempt " + mRestartAttempts + "/" + MAX_RESTART_ATTEMPTS);
 
         try {
             mBotDropService.startGateway(result -> {
                 try {
+                    mRestartInFlight = false;
                     if (result.success) {
                         Logger.logInfo(LOG_TAG, "Gateway started successfully");
                         mRestartAttempts = 0; // Reset on success
@@ -255,10 +269,12 @@ public class GatewayMonitorService extends Service {
                         }
                     }
                 } catch (Exception e) {
+                    mRestartInFlight = false;
                     Logger.logError(LOG_TAG, "Error in gateway restart callback: " + e.getMessage());
                 }
             });
         } catch (Exception e) {
+            mRestartInFlight = false;
             Logger.logError(LOG_TAG, "Error executing gateway start: " + e.getMessage());
         }
     }

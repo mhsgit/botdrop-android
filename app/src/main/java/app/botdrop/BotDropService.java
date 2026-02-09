@@ -405,11 +405,13 @@ public class BotDropService extends Service {
             "# sshd\n" +
             "pgrep -x sshd || sshd || true\n" +
             "# kill old gateway\n" +
+            "pkill -f \"openclaw.*gateway\" 2>/dev/null || true\n" +
             "if [ -f " + GATEWAY_PID_FILE + " ]; then\n" +
             "  kill $(cat " + GATEWAY_PID_FILE + ") 2>/dev/null\n" +
             "  rm -f " + GATEWAY_PID_FILE + "\n" +
             "  sleep 1\n" +
             "fi\n" +
+            "sleep 1\n" +
             "# start gateway\n" +
             "echo '' > " + GATEWAY_LOG_FILE + "\n" +
             "export HOME=" + home + "\n" +
@@ -445,10 +447,20 @@ public class BotDropService extends Service {
     }
 
     public void stopGateway(CommandCallback callback) {
-        String cmd = "if [ -f " + GATEWAY_PID_FILE + " ]; then " +
-            "kill $(cat " + GATEWAY_PID_FILE + ") 2>/dev/null && echo 'stopped' || echo 'not running'; " +
-            "rm -f " + GATEWAY_PID_FILE + "; " +
-            "else echo 'not running'; fi";
+        // PID files can be stale and the gateway may spawn children. Use best-effort cleanup to
+        // prevent port 18789 conflicts and restart storms.
+        String cmd =
+            "PID=''\n" +
+            "if [ -f " + GATEWAY_PID_FILE + " ]; then PID=$(cat " + GATEWAY_PID_FILE + " 2>/dev/null || true); fi\n" +
+            "rm -f " + GATEWAY_PID_FILE + "\n" +
+            "if [ -n \"$PID\" ]; then\n" +
+            "  kill \"$PID\" 2>/dev/null || true\n" +
+            "  pkill -TERM -P \"$PID\" 2>/dev/null || true\n" +
+            "fi\n" +
+            "pkill -TERM -f \"openclaw.*gateway\" 2>/dev/null || true\n" +
+            "sleep 1\n" +
+            "pkill -9 -f \"openclaw.*gateway\" 2>/dev/null || true\n" +
+            "echo stopped\n";
         executeCommand(cmd, callback);
     }
 
@@ -467,8 +479,17 @@ public class BotDropService extends Service {
      * Check if the gateway is currently running using PID file
      */
     public void isGatewayRunning(CommandCallback callback) {
-        String cmd = "if [ -f " + GATEWAY_PID_FILE + " ] && kill -0 $(cat " + GATEWAY_PID_FILE + ") 2>/dev/null; then " +
-            "echo 'running'; else echo 'stopped'; fi";
+        // Don't rely only on PID file (can be stale after crashes or upgrades).
+        String cmd =
+            "if [ -f " + GATEWAY_PID_FILE + " ] && kill -0 $(cat " + GATEWAY_PID_FILE + ") 2>/dev/null; then\n" +
+            "  echo running\n" +
+            "  exit 0\n" +
+            "fi\n" +
+            "if pgrep -f \"openclaw.*gateway\" >/dev/null 2>&1; then\n" +
+            "  echo running\n" +
+            "else\n" +
+            "  echo stopped\n" +
+            "fi\n";
         executeCommand(cmd, callback);
     }
 
