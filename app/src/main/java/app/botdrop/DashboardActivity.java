@@ -56,6 +56,7 @@ public class DashboardActivity extends Activity {
     private TextView mSshInfoText;
     private View mUpdateBanner;
     private TextView mUpdateBannerText;
+    private TextView mCurrentModelText;
 
     private BotDropService mBotDropService;
     private boolean mBound = false;
@@ -69,12 +70,15 @@ public class DashboardActivity extends Activity {
             mBotDropService = binder.getService();
             mBound = true;
             Logger.logDebug(LOG_TAG, "Service connected");
-            
+
             // Start status refresh
             startStatusRefresh();
-            
+
             // Start gateway monitor service
             startGatewayMonitorService();
+
+            // Load current model
+            loadCurrentModel();
         }
 
         @Override
@@ -103,12 +107,15 @@ public class DashboardActivity extends Activity {
         mStopButton = findViewById(R.id.btn_stop);
         mRestartButton = findViewById(R.id.btn_restart);
         Button openTerminalButton = findViewById(R.id.btn_open_terminal);
+        mCurrentModelText = findViewById(R.id.current_model_text);
+        Button changeModelButton = findViewById(R.id.btn_change_model);
 
         // Setup button listeners
         mStartButton.setOnClickListener(v -> startGateway());
         mStopButton.setOnClickListener(v -> stopGateway());
-        mRestartButton.setOnClickListener(v -> restartGateway());
+        mRestartButton.setOnClickListener(v -> restartGatewayForControl());
         openTerminalButton.setOnClickListener(v -> openTerminal());
+        changeModelButton.setOnClickListener(v -> showModelSelector());
 
         mSshCard = findViewById(R.id.ssh_card);
         mSshInfoText = findViewById(R.id.ssh_info_text);
@@ -352,9 +359,9 @@ public class DashboardActivity extends Activity {
     }
 
     /**
-     * Restart the gateway
+     * Restart the gateway (for control button)
      */
-    private void restartGateway() {
+    private void restartGatewayForControl() {
         if (!mBound || mBotDropService == null) {
             return;
         }
@@ -370,6 +377,28 @@ public class DashboardActivity extends Activity {
                 Toast.makeText(this, "Failed to restart gateway", Toast.LENGTH_SHORT).show();
                 mRestartButton.setEnabled(true);
                 Logger.logError(LOG_TAG, "Restart failed: " + result.stderr);
+            }
+        });
+    }
+
+    /**
+     * Restart the gateway (for model change)
+     */
+    private void restartGateway() {
+        if (!mBound || mBotDropService == null) {
+            return;
+        }
+
+        Toast.makeText(this, "Restarting gateway with new model...", Toast.LENGTH_SHORT).show();
+
+        mBotDropService.restartGateway(result -> {
+            if (result.success) {
+                Toast.makeText(this, "Gateway restarted successfully", Toast.LENGTH_SHORT).show();
+                loadCurrentModel();
+            } else {
+                Toast.makeText(this, "Failed to restart gateway", Toast.LENGTH_SHORT).show();
+                Logger.logError(LOG_TAG, "Restart failed: " + result.stderr);
+                loadCurrentModel();
             }
         });
     }
@@ -431,5 +460,93 @@ public class DashboardActivity extends Activity {
     private void openTerminal() {
         Intent intent = new Intent(this, TermuxActivity.class);
         startActivity(intent);
+    }
+
+    /**
+     * Load and display the current model from OpenClaw config
+     */
+    private void loadCurrentModel() {
+        if (!mBound || mBotDropService == null) {
+            mCurrentModelText.setText("—");
+            return;
+        }
+
+        // Execute command to extract the primary model from config
+        String command = "cat ~/.openclaw/openclaw.json | grep -A 1 '\"primary\"' | tail -1 | sed 's/.*\"\\(.*\\)\".*/\\1/'";
+        mBotDropService.executeCommand(command, result -> {
+            runOnUiThread(() -> {
+                if (result.success) {
+                    String model = result.stdout.trim();
+                    if (!model.isEmpty() && !model.equals("null")) {
+                        mCurrentModelText.setText(model);
+                        Logger.logInfo(LOG_TAG, "Current model: " + model);
+                    } else {
+                        mCurrentModelText.setText("—");
+                    }
+                } else {
+                    mCurrentModelText.setText("—");
+                    Logger.logError(LOG_TAG, "Failed to load current model: " + result.stderr);
+                }
+            });
+        });
+    }
+
+    /**
+     * Show the model selector dialog
+     */
+    private void showModelSelector() {
+        if (!mBound || mBotDropService == null) {
+            Toast.makeText(this, "Service not available. Please try again.", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        ModelSelectorDialog dialog = new ModelSelectorDialog(this, mBotDropService);
+        dialog.show((provider, model) -> {
+            if (provider != null && model != null) {
+                String fullModel = provider + "/" + model;
+                updateModel(fullModel);
+            }
+        });
+    }
+
+    /**
+     * Update the model configuration and restart gateway
+     */
+    private void updateModel(String fullModel) {
+        if (!mBound || mBotDropService == null) {
+            return;
+        }
+
+        // Show progress
+        mCurrentModelText.setText("Updating...");
+
+        // Update OpenClaw config
+        String command = "termux-chroot openclaw config set agents.defaults.model.primary " + fullModel;
+        mBotDropService.executeCommand(command, result -> {
+            if (result.success) {
+                Logger.logInfo(LOG_TAG, "Model updated to: " + fullModel);
+
+                // Update cache
+                ConfigTemplate template = ConfigTemplateCache.loadTemplate(DashboardActivity.this);
+                if (template == null) {
+                    template = new ConfigTemplate();
+                }
+                template.model = fullModel;
+                // Extract provider from fullModel (part before "/")
+                if (fullModel.contains("/")) {
+                    template.provider = fullModel.split("/")[0];
+                }
+                ConfigTemplateCache.saveTemplate(DashboardActivity.this, template);
+
+                // Restart gateway
+                restartGateway();
+            } else {
+                runOnUiThread(() -> {
+                    Toast.makeText(DashboardActivity.this, "Failed to update model", Toast.LENGTH_SHORT).show();
+                    Logger.logError(LOG_TAG, "Failed to update model: " + result.stderr);
+                    loadCurrentModel(); // Reload to show current value
+                });
+            }
+        });
     }
 }
