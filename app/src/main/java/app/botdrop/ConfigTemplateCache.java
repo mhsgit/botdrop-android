@@ -127,15 +127,20 @@ public class ConfigTemplateCache {
         }
 
         try {
+            String modelName = template.model;
+            if (modelName != null && modelName.startsWith(template.provider + "/")) {
+                modelName = modelName.substring((template.provider + "/").length());
+            }
+
             // Set provider and model
-            boolean success = BotDropConfig.setProvider(template.provider, template.model);
+            boolean success = BotDropConfig.setProvider(template.provider, modelName);
             if (!success) {
                 Logger.logError(LOG_TAG, "Failed to set provider/model");
                 return false;
             }
 
             // Set API key
-            success = BotDropConfig.setApiKey(template.provider, template.apiKey);
+            success = BotDropConfig.setApiKey(template.provider, modelName, template.apiKey);
             if (!success) {
                 Logger.logError(LOG_TAG, "Failed to set API key");
                 return false;

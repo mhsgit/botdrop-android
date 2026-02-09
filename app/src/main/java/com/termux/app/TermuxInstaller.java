@@ -471,6 +471,28 @@ public final class TermuxInstaller {
                 "NPM_OUTPUT=$(npm install -g openclaw@latest --ignore-scripts --force 2>&1)\n" +
                 "NPM_EXIT=$?\n" +
                 "if [ $NPM_EXIT -eq 0 ]; then\n" +
+                "    # Create a stable openclaw wrapper (npm-generated shim can be broken on Android/proot)\n" +
+                "    cat > $PREFIX/bin/openclaw <<'BOTDROP_OPENCLAW_WRAPPER'\n" +
+                "#!" + com.termux.shared.termux.TermuxConstants.TERMUX_BIN_PREFIX_DIR_PATH + "/bash\n" +
+                "PREFIX=\"$(cd \"$(dirname \"$0\")/..\" && pwd)\"\n" +
+                "ENTRY=\"\"\n" +
+                "for CANDIDATE in \\\n" +
+                "  \"$PREFIX/lib/node_modules/openclaw/dist/cli.js\" \\\n" +
+                "  \"$PREFIX/lib/node_modules/openclaw/bin/openclaw.js\" \\\n" +
+                "  \"$PREFIX/lib/node_modules/openclaw/dist/index.js\"; do\n" +
+                "  if [ -f \"$CANDIDATE\" ]; then\n" +
+                "    ENTRY=\"$CANDIDATE\"\n" +
+                "    break\n" +
+                "  fi\n" +
+                "done\n" +
+                "if [ -z \"$ENTRY\" ]; then\n" +
+                "  echo \"openclaw entrypoint not found under $PREFIX/lib/node_modules/openclaw\" >&2\n" +
+                "  exit 127\n" +
+                "fi\n" +
+                "export SSL_CERT_FILE=\"$PREFIX/etc/tls/cert.pem\"\n" +
+                "exec \"$PREFIX/bin/termux-chroot\" \"$PREFIX/bin/node\" \"$ENTRY\" \"$@\"\n" +
+                "BOTDROP_OPENCLAW_WRAPPER\n" +
+                "    chmod 755 $PREFIX/bin/openclaw\n" +
                 "    echo \"BOTDROP_STEP:2:DONE\"\n" +
                 "    touch \"$MARKER\"\n" +
                 "    echo \"BOTDROP_COMPLETE\"\n" +

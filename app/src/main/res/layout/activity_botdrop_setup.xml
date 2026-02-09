@@ -13,14 +13,14 @@
         android:padding="8dp"
         android:gravity="end">
 
-        <ImageButton
+        <Button
             android:id="@+id/setup_check_updates"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:src="@drawable/ic_update"
-            android:contentDescription="Check for updates"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:padding="8dp"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Check Update"
+            android:textSize="12sp"
+            android:background="@drawable/botdrop_button_outline_bg"
+            android:textColor="@color/botdrop_accent"
             android:layout_marginEnd="8dp" />
 
         <Button

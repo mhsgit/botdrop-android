@@ -84,6 +84,84 @@
 
         </LinearLayout>
 
+        <!-- Inline API key input shown after model selection -->
+        <LinearLayout
+            android:id="@+id/auth_key_section"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <TextView
+                android:id="@+id/auth_key_label"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="API Key"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:textColor="@color/botdrop_on_background"
+                android:layout_marginBottom="8dp" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:background="@drawable/botdrop_input_bg"
+                android:padding="4dp">
+
+                <EditText
+                    android:id="@+id/auth_key_input"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:hint="Paste your API key here"
+                    android:inputType="textPassword"
+                    android:background="@android:color/transparent"
+                    android:textColor="@color/botdrop_on_background"
+                    android:textColorHint="@color/botdrop_secondary_text"
+                    android:padding="12dp" />
+
+                <ImageButton
+                    android:id="@+id/auth_key_toggle_visibility"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:src="@android:drawable/ic_menu_view"
+                    android:background="?android:attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="Toggle visibility" />
+
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/auth_key_status_container"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:background="@drawable/botdrop_card_bg"
+                android:padding="12dp"
+                android:layout_marginTop="16dp"
+                android:visibility="gone">
+
+                <TextView
+                    android:id="@+id/auth_key_status_text"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textSize="14sp"
+                    android:textColor="@color/botdrop_on_background" />
+
+            </LinearLayout>
+
+            <Button
+                android:id="@+id/auth_key_verify_button"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Verify &amp; Continue"
+                android:layout_marginTop="24dp"
+                android:background="@drawable/botdrop_button_bg"
+                android:textColor="#1A1A1A"
+                android:textStyle="bold" />
+
+        </LinearLayout>
+
     </LinearLayout>
 
 </ScrollView>

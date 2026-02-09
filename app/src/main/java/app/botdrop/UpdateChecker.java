@@ -39,6 +39,10 @@ public class UpdateChecker {
         void onUpdateAvailable(String latestVersion, String downloadUrl, String notes);
     }
 
+    public interface ForceCheckCallback {
+        void onComplete(boolean updateAvailable, String latestVersion, String downloadUrl, String notes, String message);
+    }
+
     /**
      * Run a background check and persist results. Optionally calls back on the main thread.
      */
@@ -141,15 +145,93 @@ public class UpdateChecker {
      * Used for manual update button.
      */
     public static void forceCheck(Context ctx, UpdateCallback cb) {
-        SharedPreferences prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+        forceCheckWithFeedback(ctx, (updateAvailable, latestVersion, downloadUrl, notes, message) -> {
+            if (cb == null) return;
+            if (updateAvailable) {
+                cb.onUpdateAvailable(latestVersion, downloadUrl, notes);
+            } else {
+                cb.onUpdateAvailable(null, null, null);
+            }
+        });
+    }
 
-        // Clear last check timestamp to bypass throttle
+    /**
+     * Force an immediate update check and always invoke callback (success/no-update/error).
+     */
+    public static void forceCheckWithFeedback(Context ctx, ForceCheckCallback cb) {
+        SharedPreferences prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
         prefs.edit().putLong(KEY_LAST_CHECK, 0).apply();
 
-        Logger.logInfo(LOG_TAG, "Forcing update check (manual trigger)");
+        String currentVersion;
+        int currentVersionCode;
+        try {
+            PackageInfo pi = ctx.getPackageManager().getPackageInfo(ctx.getPackageName(), 0);
+            currentVersion = pi.versionName;
+            currentVersionCode = pi.versionCode;
+        } catch (Exception e) {
+            notifyForceResult(cb, false, null, null, null, "Failed to read current app version");
+            return;
+        }
 
-        // Execute normal check
-        check(ctx, cb);
+        Logger.logInfo(LOG_TAG, "Forcing update check, current=" + currentVersion + " vc=" + currentVersionCode);
+
+        new Thread(() -> {
+            try {
+                String urlStr = CHECK_URL + "?v=" + currentVersion + "&vc=" + currentVersionCode;
+                HttpURLConnection conn = (HttpURLConnection) new URL(urlStr).openConnection();
+                conn.setConnectTimeout(CONNECT_TIMEOUT_MS);
+                conn.setReadTimeout(READ_TIMEOUT_MS);
+                conn.setRequestMethod("GET");
+
+                int responseCode = conn.getResponseCode();
+                if (responseCode != 200) {
+                    conn.disconnect();
+                    notifyForceResult(cb, false, null, null, null, "Update check failed (HTTP " + responseCode + ")");
+                    return;
+                }
+
+                BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+                StringBuilder sb = new StringBuilder();
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    sb.append(line);
+                }
+                reader.close();
+                conn.disconnect();
+
+                prefs.edit().putLong(KEY_LAST_CHECK, System.currentTimeMillis()).apply();
+
+                JSONObject json = new JSONObject(sb.toString());
+                String latestVersion = json.optString("latest_version", "");
+                String downloadUrl = json.optString("download_url", "");
+                String notes = json.optString("release_notes", "");
+
+                if (latestVersion.isEmpty() || latestVersion.equals(currentVersion) || !isNewer(latestVersion, currentVersion)) {
+                    clearStored(prefs);
+                    notifyForceResult(cb, false, null, null, null, "No updates available");
+                    return;
+                }
+
+                prefs.edit()
+                    .putString(KEY_LATEST_VERSION, latestVersion)
+                    .putString(KEY_DOWNLOAD_URL, downloadUrl)
+                    .putString(KEY_RELEASE_NOTES, notes)
+                    .apply();
+
+                notifyForceResult(cb, true, latestVersion, downloadUrl, notes, "Update available: v" + latestVersion);
+            } catch (Exception e) {
+                Logger.logError(LOG_TAG, "Forced update check failed: " + e.getMessage());
+                notifyForceResult(cb, false, null, null, null, "Update check failed: " + e.getMessage());
+            }
+        }).start();
+    }
+
+    private static void notifyForceResult(ForceCheckCallback cb, boolean updateAvailable,
+                                          String latestVersion, String downloadUrl, String notes,
+                                          String message) {
+        if (cb == null) return;
+        new Handler(Looper.getMainLooper()).post(() ->
+            cb.onComplete(updateAvailable, latestVersion, downloadUrl, notes, message));
     }
 
     /**

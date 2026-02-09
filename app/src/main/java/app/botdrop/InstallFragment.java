@@ -22,7 +22,7 @@ import com.termux.shared.logger.Logger;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * Step 1 of setup: Welcome + Auto-install OpenClaw
+ * Step 2 of setup: Welcome + Auto-install OpenClaw
  *
  * This fragment automatically starts installation when loaded.
  * Shows progress with checkmarks for each step.

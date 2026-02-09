@@ -20,19 +20,25 @@ import androidx.recyclerview.widget.RecyclerView;
 import com.termux.R;
 import com.termux.shared.logger.Logger;
 
+import java.io.BufferedReader;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
 /**
  * Dialog for selecting a model with search capability.
- * Fetches model list from openclaw models list command.
+ * Uses a static provider/model catalog bundled with the app.
  */
 public class ModelSelectorDialog extends Dialog {
 
     private static final String LOG_TAG = "ModelSelectorDialog";
+    private static final String STATIC_MODELS_ASSET = "openclaw-models-all.keys";
 
-    private BotDropService mService;
+    // Loaded once per process. 711 entries is small enough to keep in memory.
+    private static List<ModelInfo> sCachedAllModels;
+
     private ModelSelectedCallback mCallback;
 
     private EditText mSearchBox;
@@ -49,19 +55,11 @@ public class ModelSelectorDialog extends Dialog {
 
     public ModelSelectorDialog(@NonNull Context context, BotDropService service) {
         super(context);
-        this.mService = service;
     }
 
-    /**
-     * Constructor for use during setup (will try CLI, fallback to static list)
-     */
     public ModelSelectorDialog(@NonNull Context context, BotDropService service, boolean allowFallback) {
         super(context);
-        this.mService = service;
-        this.mAllowFallback = allowFallback;
     }
-
-    private boolean mAllowFallback = false;
 
     public void show(ModelSelectedCallback callback) {
         this.mCallback = callback;
@@ -74,29 +72,25 @@ public class ModelSelectorDialog extends Dialog {
         requestWindowFeature(Window.FEATURE_NO_TITLE);
         setContentView(R.layout.dialog_model_selector);
 
-        // Set dialog to fullscreen
         Window window = getWindow();
         if (window != null) {
             window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
             window.setBackgroundDrawableResource(android.R.color.transparent);
         }
 
-        // Initialize views
         mSearchBox = findViewById(R.id.model_search);
         mModelList = findViewById(R.id.model_list);
         mStatusText = findViewById(R.id.model_status);
         mRetryButton = findViewById(R.id.model_retry);
         ImageButton closeButton = findViewById(R.id.model_close_button);
 
-        // Close button
         closeButton.setOnClickListener(v -> {
             if (mCallback != null) {
-                mCallback.onModelSelected(null, null); // User cancelled
+                mCallback.onModelSelected(null, null);
             }
             dismiss();
         });
 
-        // Setup RecyclerView
         mAdapter = new ModelListAdapter(model -> {
             if (mCallback != null) {
                 mCallback.onModelSelected(model.provider, model.model);
@@ -106,7 +100,6 @@ public class ModelSelectorDialog extends Dialog {
         mModelList.setLayoutManager(new LinearLayoutManager(getContext()));
         mModelList.setAdapter(mAdapter);
 
-        // Setup search
         mSearchBox.addTextChangedListener(new TextWatcher() {
             @Override
             public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
@@ -120,127 +113,69 @@ public class ModelSelectorDialog extends Dialog {
             public void afterTextChanged(Editable s) {}
         });
 
-        // Setup retry button
         mRetryButton.setOnClickListener(v -> loadModels());
 
-        // Load models
         loadModels();
     }
 
     private void loadModels() {
         showLoading();
 
-        if (mService == null) {
-            // No service, use static model list
-            List<ModelInfo> models = ModelDatabase.getAllModels();
-            mAllModels = models;
-            mAdapter.updateList(models);
-            showList();
+        if (sCachedAllModels == null || sCachedAllModels.isEmpty()) {
+            long t0 = System.currentTimeMillis();
+            sCachedAllModels = readModelsFromAsset();
+            Logger.logInfo(LOG_TAG, "Static catalog loaded: " + sCachedAllModels.size() + " models in " +
+                (System.currentTimeMillis() - t0) + "ms");
+        }
+
+        if (sCachedAllModels.isEmpty()) {
+            showError("Failed to load model catalog.");
             return;
         }
 
-        // Try to use openclaw CLI
-        mService.executeCommand("termux-chroot openclaw models list", result -> {
-            if (!result.success) {
-                // CLI failed
-                if (mAllowFallback) {
-                    // Fallback to static list (during setup, might not be fully initialized)
-                    List<ModelInfo> models = ModelDatabase.getAllModels();
-                    mAllModels = models;
-                    mAdapter.updateList(models);
-                    showList();
-                } else {
-                    showError("Failed to load models. Please try again.");
-                }
-                return;
-            }
-
-            // Parse models from CLI output
-            List<ModelInfo> models = parseModelList(result.stdout);
-
-            if (models.isEmpty()) {
-                if (mAllowFallback) {
-                    // Fallback to static list
-                    models = ModelDatabase.getAllModels();
-                }
-                if (models.isEmpty()) {
-                    showError("No models available.");
-                    return;
-                }
-            }
-
-            // Update UI
-            mAllModels = models;
-            mAdapter.updateList(models);
-            showList();
-        });
+        mAllModels = new ArrayList<>(sCachedAllModels);
+        mAdapter.updateList(mAllModels);
+        showList();
     }
 
-    /**
-     * Parse model list output from openclaw models list.
-     * Format: "Model                                      Input      Ctx      Local Auth  Tags"
-     *         "google/gemini-3-flash-preview              text+image 1024k    no    yes   default"
-     */
-    private List<ModelInfo> parseModelList(String output) {
+    private List<ModelInfo> readModelsFromAsset() {
         List<ModelInfo> models = new ArrayList<>();
 
-        try {
-            String[] lines = output.split("\n");
-
-            for (String line : lines) {
-                // Skip header and empty lines
-                if (line.trim().isEmpty() || line.startsWith("Model ")) {
-                    continue;
-                }
-
-                // Extract model name (first column before whitespace)
-                String[] parts = line.trim().split("\\s+");
-                if (parts.length > 0) {
-                    String modelName = parts[0];
-                    if (modelName.contains("/")) {
-                        ModelInfo info = new ModelInfo(modelName);
-
-                        // Parse additional fields if available
-                        if (parts.length > 1) info.input = parts[1];
-                        if (parts.length > 2) info.context = parts[2];
-
-                        // Check for default tag
-                        info.isDefault = line.contains("default");
-
-                        models.add(info);
-                    }
+        try (InputStream is = getContext().getAssets().open(STATIC_MODELS_ASSET);
+             BufferedReader reader = new BufferedReader(new InputStreamReader(is))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                String key = line.trim();
+                if (isModelToken(key)) {
+                    models.add(new ModelInfo(key));
                 }
             }
-
-            Logger.logInfo(LOG_TAG, "Parsed " + models.size() + " models");
-
         } catch (Exception e) {
-            Logger.logError(LOG_TAG, "Failed to parse model list: " + e.getMessage());
+            Logger.logError(LOG_TAG, "Failed to read static model catalog: " + e.getMessage());
         }
 
         return models;
     }
 
-    /**
-     * Filter models based on search query.
-     */
+    private boolean isModelToken(String token) {
+        if (token == null || token.isEmpty()) return false;
+        if (!token.contains("/")) return false;
+        return token.matches("[A-Za-z0-9._-]+/[A-Za-z0-9._:/-]+");
+    }
+
     private void filterModels(String query) {
         if (query == null || query.isEmpty()) {
             mAdapter.updateList(mAllModels);
             return;
         }
 
-        String lowerQuery = query.toLowerCase();
+        String lower = query.toLowerCase();
         List<ModelInfo> filtered = mAllModels.stream()
-            .filter(m -> m.fullName.toLowerCase().contains(lowerQuery))
+            .filter(m -> m.fullName.toLowerCase().contains(lower))
             .collect(Collectors.toList());
-
         mAdapter.updateList(filtered);
     }
 
-    /**
-     * Show loading state.
-     */
     private void showLoading() {
         mModelList.setVisibility(View.GONE);
         mRetryButton.setVisibility(View.GONE);
@@ -248,9 +183,6 @@ public class ModelSelectorDialog extends Dialog {
         mStatusText.setText("Loading models...");
     }
 
-    /**
-     * Show error state.
-     */
     private void showError(String message) {
         mModelList.setVisibility(View.GONE);
         mRetryButton.setVisibility(View.VISIBLE);
@@ -258,9 +190,6 @@ public class ModelSelectorDialog extends Dialog {
         mStatusText.setText(message);
     }
 
-    /**
-     * Show list state.
-     */
     private void showList() {
         mModelList.setVisibility(View.VISIBLE);
         mRetryButton.setVisibility(View.GONE);

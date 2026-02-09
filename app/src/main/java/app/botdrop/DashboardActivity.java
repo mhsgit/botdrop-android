@@ -1,6 +1,7 @@
 package app.botdrop;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.content.ComponentName;
@@ -13,8 +14,12 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
+import android.text.InputType;
+import android.text.TextUtils;
 import android.view.View;
 import android.widget.Button;
+import android.widget.EditText;
+import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -43,6 +48,7 @@ public class DashboardActivity extends Activity {
     private static final String LOG_TAG = "DashboardActivity";
     public static final String NOTIFICATION_CHANNEL_ID = "botdrop_gateway";
     private static final int STATUS_REFRESH_INTERVAL_MS = 5000; // 5 seconds
+    private static final int ERROR_CHECK_INTERVAL_MS = 15000; // 15 seconds
 
     private TextView mStatusText;
     private TextView mUptimeText;
@@ -57,11 +63,15 @@ public class DashboardActivity extends Activity {
     private View mUpdateBanner;
     private TextView mUpdateBannerText;
     private TextView mCurrentModelText;
+    private View mGatewayErrorBanner;
+    private TextView mGatewayErrorText;
 
     private BotDropService mBotDropService;
     private boolean mBound = false;
     private Handler mHandler = new Handler(Looper.getMainLooper());
     private Runnable mStatusRefreshRunnable;
+    private long mLastErrorCheckAtMs = 0L;
+    private String mLastErrorMessage;
 
     private ServiceConnection mConnection = new ServiceConnection() {
         @Override
@@ -109,6 +119,8 @@ public class DashboardActivity extends Activity {
         Button openTerminalButton = findViewById(R.id.btn_open_terminal);
         mCurrentModelText = findViewById(R.id.current_model_text);
         Button changeModelButton = findViewById(R.id.btn_change_model);
+        mGatewayErrorBanner = findViewById(R.id.gateway_error_banner);
+        mGatewayErrorText = findViewById(R.id.gateway_error_text);
 
         // Setup button listeners
         mStartButton.setOnClickListener(v -> startGateway());
@@ -217,6 +229,7 @@ public class DashboardActivity extends Activity {
         mBotDropService.isGatewayRunning(result -> {
             boolean isRunning = result.success && result.stdout.trim().equals("running");
             updateStatusUI(isRunning);
+            checkGatewayErrors(isRunning);
 
             // Get uptime if running
             if (isRunning) {
@@ -466,29 +479,40 @@ public class DashboardActivity extends Activity {
      * Load and display the current model from OpenClaw config
      */
     private void loadCurrentModel() {
-        if (!mBound || mBotDropService == null) {
-            mCurrentModelText.setText("—");
-            return;
-        }
+        try {
+            JSONObject config = BotDropConfig.readConfig();
+            String currentModel = null;
 
-        // Execute command to extract the primary model from config
-        String command = "cat ~/.openclaw/openclaw.json | grep -A 1 '\"primary\"' | tail -1 | sed 's/.*\"\\(.*\\)\".*/\\1/'";
-        mBotDropService.executeCommand(command, result -> {
-            runOnUiThread(() -> {
-                if (result.success) {
-                    String model = result.stdout.trim();
-                    if (!model.isEmpty() && !model.equals("null")) {
-                        mCurrentModelText.setText(model);
-                        Logger.logInfo(LOG_TAG, "Current model: " + model);
-                    } else {
-                        mCurrentModelText.setText("—");
+            JSONObject agents = config.optJSONObject("agents");
+            if (agents != null) {
+                JSONObject defaults = agents.optJSONObject("defaults");
+                if (defaults != null) {
+                    Object modelObj = defaults.opt("model");
+                    if (modelObj instanceof JSONObject) {
+                        currentModel = ((JSONObject) modelObj).optString("primary", null);
+                    } else if (modelObj instanceof String) {
+                        currentModel = (String) modelObj;
                     }
-                } else {
-                    mCurrentModelText.setText("—");
-                    Logger.logError(LOG_TAG, "Failed to load current model: " + result.stderr);
                 }
-            });
-        });
+            }
+
+            if (TextUtils.isEmpty(currentModel)) {
+                ConfigTemplate template = ConfigTemplateCache.loadTemplate(this);
+                if (template != null && !TextUtils.isEmpty(template.model)) {
+                    currentModel = template.model;
+                }
+            }
+
+            if (!TextUtils.isEmpty(currentModel) && !"null".equals(currentModel)) {
+                mCurrentModelText.setText(currentModel);
+                Logger.logInfo(LOG_TAG, "Current model: " + currentModel);
+            } else {
+                mCurrentModelText.setText("—");
+            }
+        } catch (Exception e) {
+            mCurrentModelText.setText("—");
+            Logger.logError(LOG_TAG, "Failed to load current model: " + e.getMessage());
+        }
     }
 
     /**
@@ -500,53 +524,179 @@ public class DashboardActivity extends Activity {
             return;
         }
 
-        ModelSelectorDialog dialog = new ModelSelectorDialog(this, mBotDropService);
+        ModelSelectorDialog dialog = new ModelSelectorDialog(this, mBotDropService, true);
         dialog.show((provider, model) -> {
             if (provider != null && model != null) {
-                String fullModel = provider + "/" + model;
-                updateModel(fullModel);
+                showModelAuthDialog(provider, model);
             }
         });
     }
 
     /**
-     * Update the model configuration and restart gateway
+     * Ask for optional API key update, then apply model.
      */
-    private void updateModel(String fullModel) {
+    private void showModelAuthDialog(String provider, String model) {
+        String fullModel = provider + "/" + model;
+        boolean hasExistingKey = BotDropConfig.hasApiKey(provider);
+
+        int horizontalPadding = (int) (20 * getResources().getDisplayMetrics().density);
+        int verticalPadding = (int) (12 * getResources().getDisplayMetrics().density);
+
+        LinearLayout container = new LinearLayout(this);
+        container.setOrientation(LinearLayout.VERTICAL);
+        container.setPadding(horizontalPadding, verticalPadding, horizontalPadding, 0);
+
+        TextView message = new TextView(this);
+        message.setText(
+            "Selected model: " + fullModel + "\n" +
+            (hasExistingKey
+                ? "Enter a new API key if you want to replace the current one."
+                : "No API key found for provider \"" + provider + "\". Please enter one.")
+        );
+        message.setPadding(0, 0, 0, verticalPadding);
+        container.addView(message);
+
+        EditText apiKeyInput = new EditText(this);
+        apiKeyInput.setHint(hasExistingKey ? "Leave empty to keep current key" : "Enter API key");
+        apiKeyInput.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        container.addView(apiKeyInput);
+
+        AlertDialog dialog = new AlertDialog.Builder(this)
+            .setTitle("Change model")
+            .setView(container)
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Save & Apply", null)
+            .create();
+
+        dialog.setOnShowListener(d -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+            String newApiKey = apiKeyInput.getText().toString().trim();
+            if (!hasExistingKey && TextUtils.isEmpty(newApiKey)) {
+                apiKeyInput.setError("API key is required for this provider");
+                return;
+            }
+
+            dialog.dismiss();
+            updateModel(fullModel, newApiKey);
+        }));
+
+        dialog.show();
+    }
+
+    /**
+     * Update model/API key and restart gateway.
+     */
+    private void updateModel(String fullModel, String optionalApiKey) {
         if (!mBound || mBotDropService == null) {
             return;
         }
 
-        // Show progress
         mCurrentModelText.setText("Updating...");
+        String[] parts = fullModel.split("/", 2);
+        if (parts.length != 2) {
+            Toast.makeText(this, "Invalid model format", Toast.LENGTH_SHORT).show();
+            loadCurrentModel();
+            return;
+        }
 
-        // Update OpenClaw config
-        String command = "termux-chroot openclaw config set agents.defaults.model.primary " + fullModel;
-        mBotDropService.executeCommand(command, result -> {
-            if (result.success) {
-                Logger.logInfo(LOG_TAG, "Model updated to: " + fullModel);
+        String provider = parts[0];
+        String model = parts[1];
+        boolean providerWritten = BotDropConfig.setProvider(provider, model);
+        boolean keyWritten = true;
+        if (!TextUtils.isEmpty(optionalApiKey)) {
+            keyWritten = BotDropConfig.setApiKey(provider, model, optionalApiKey);
+        }
 
-                // Update cache
-                ConfigTemplate template = ConfigTemplateCache.loadTemplate(DashboardActivity.this);
-                if (template == null) {
-                    template = new ConfigTemplate();
+        if (!providerWritten || !keyWritten) {
+            Toast.makeText(DashboardActivity.this, "Failed to update model settings", Toast.LENGTH_SHORT).show();
+            Logger.logError(LOG_TAG, "Failed to update model. providerWritten=" + providerWritten +
+                ", keyWritten=" + keyWritten);
+            loadCurrentModel();
+            return;
+        }
+
+        Logger.logInfo(LOG_TAG, "Model updated to: " + fullModel + ", apiKeyUpdated=" +
+            (!TextUtils.isEmpty(optionalApiKey)));
+
+        ConfigTemplate template = ConfigTemplateCache.loadTemplate(DashboardActivity.this);
+        if (template == null) {
+            template = new ConfigTemplate();
+        }
+        template.provider = provider;
+        template.model = fullModel;
+        if (!TextUtils.isEmpty(optionalApiKey)) {
+            template.apiKey = optionalApiKey;
+        }
+        ConfigTemplateCache.saveTemplate(DashboardActivity.this, template);
+
+        restartGateway();
+    }
+
+    private void checkGatewayErrors(boolean isRunning) {
+        if (!mBound || mBotDropService == null || !isRunning) {
+            showGatewayError(null);
+            return;
+        }
+
+        long now = System.currentTimeMillis();
+        if (now - mLastErrorCheckAtMs < ERROR_CHECK_INTERVAL_MS) {
+            return;
+        }
+        mLastErrorCheckAtMs = now;
+
+        mBotDropService.executeCommand(
+            "if [ -f ~/.openclaw/gateway.log ]; then tail -n 120 ~/.openclaw/gateway.log; fi",
+            result -> {
+                if (!result.success) {
+                    Logger.logWarn(LOG_TAG, "Failed to read gateway.log: " + result.stderr);
+                    return;
                 }
-                template.model = fullModel;
-                // Extract provider from fullModel (part before "/")
-                if (fullModel.contains("/")) {
-                    template.provider = fullModel.split("/")[0];
-                }
-                ConfigTemplateCache.saveTemplate(DashboardActivity.this, template);
-
-                // Restart gateway
-                restartGateway();
-            } else {
-                runOnUiThread(() -> {
-                    Toast.makeText(DashboardActivity.this, "Failed to update model", Toast.LENGTH_SHORT).show();
-                    Logger.logError(LOG_TAG, "Failed to update model: " + result.stderr);
-                    loadCurrentModel(); // Reload to show current value
-                });
+                String errorLine = extractRecentGatewayError(result.stdout);
+                showGatewayError(errorLine);
             }
-        });
+        );
+    }
+
+    private String extractRecentGatewayError(String logText) {
+        if (TextUtils.isEmpty(logText)) return null;
+
+        String[] lines = logText.split("\\r?\\n");
+        for (int i = lines.length - 1; i >= 0; i--) {
+            String raw = lines[i];
+            if (raw == null) continue;
+            String line = raw.trim();
+            if (line.isEmpty()) continue;
+
+            String lower = line.toLowerCase();
+            boolean looksLikeError =
+                lower.contains(" sendmessage failed") ||
+                lower.contains(" sendchataction failed") ||
+                lower.contains(" fetch failed") ||
+                lower.contains("error:") ||
+                lower.contains("exception") ||
+                lower.contains("unhandled rejection") ||
+                lower.contains("network request for");
+            if (looksLikeError) {
+                if (line.length() > 180) {
+                    line = line.substring(0, 180) + "...";
+                }
+                return line;
+            }
+        }
+        return null;
+    }
+
+    private void showGatewayError(String message) {
+        if (TextUtils.equals(message, mLastErrorMessage)) {
+            return;
+        }
+        mLastErrorMessage = message;
+
+        if (TextUtils.isEmpty(message)) {
+            mGatewayErrorBanner.setVisibility(View.GONE);
+            mGatewayErrorText.setText("—");
+        } else {
+            mGatewayErrorText.setText(message);
+            mGatewayErrorBanner.setVisibility(View.VISIBLE);
+        }
     }
 }

@@ -13,6 +13,7 @@ import android.provider.Settings;
 import android.view.View;
 import android.widget.Button;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import androidx.annotation.Nullable;
 import androidx.core.app.NotificationManagerCompat;
@@ -31,8 +32,8 @@ import org.json.JSONObject;
  *
  * Phase 2 (Loading): Routes to the appropriate screen based on installation state:
  * 1. If bootstrap not extracted -> Wait for TermuxInstaller
- * 2. If OpenClaw not installed -> SetupActivity (auto-install)
- * 3. If OpenClaw not configured -> SetupActivity (auth + channel setup)
+ * 2. If OpenClaw not installed/configured -> SetupActivity (agent -> install -> auth)
+ * 3. If channel not configured -> SetupActivity (channel setup)
  * 4. All ready -> DashboardActivity
  */
 public class BotDropLauncherActivity extends Activity {
@@ -48,6 +49,7 @@ public class BotDropLauncherActivity extends Activity {
     private Button mNotificationButton;
     private Button mBatteryButton;
     private Button mContinueButton;
+    private Button mCheckUpdateButton;
     private TextView mNotificationStatus;
     private TextView mBatteryStatus;
 
@@ -65,14 +67,19 @@ public class BotDropLauncherActivity extends Activity {
         mNotificationButton = findViewById(R.id.btn_notification_permission);
         mBatteryButton = findViewById(R.id.btn_battery_permission);
         mContinueButton = findViewById(R.id.btn_continue);
+        mCheckUpdateButton = findViewById(R.id.btn_check_update);
         mNotificationStatus = findViewById(R.id.notification_status);
         mBatteryStatus = findViewById(R.id.battery_status);
+
+        // Upgrade migration: clean deprecated keys from existing OpenClaw config.
+        BotDropConfig.sanitizeLegacyConfig();
 
         // Trigger update check early (results stored for Dashboard to display)
         UpdateChecker.check(this, null);
 
         mNotificationButton.setOnClickListener(v -> openNotificationSettings());
         mBatteryButton.setOnClickListener(v -> requestBatteryOptimization());
+        mCheckUpdateButton.setOnClickListener(v -> checkUpdateManually());
         mContinueButton.setOnClickListener(v -> {
             mPermissionsPhaseComplete = true;
             showLoadingPhase();
@@ -232,6 +239,23 @@ public class BotDropLauncherActivity extends Activity {
         mContinueButton.setEnabled(notifGranted && batteryExempt);
     }
 
+    private void checkUpdateManually() {
+        mCheckUpdateButton.setEnabled(false);
+        mCheckUpdateButton.setText("Checking...");
+
+        UpdateChecker.forceCheckWithFeedback(this, (updateAvailable, latestVersion, downloadUrl, notes, message) -> {
+            mCheckUpdateButton.setEnabled(true);
+            mCheckUpdateButton.setText("Check Update");
+            if (message != null && !message.isEmpty()) {
+                Toast.makeText(this, message, Toast.LENGTH_SHORT).show();
+            } else if (updateAvailable) {
+                Toast.makeText(this, "Update available: v" + latestVersion, Toast.LENGTH_SHORT).show();
+            } else {
+                Toast.makeText(this, "No updates available", Toast.LENGTH_SHORT).show();
+            }
+        });
+    }
+
     // --- Routing ---
 
     private void checkAndRoute() {
@@ -244,22 +268,22 @@ public class BotDropLauncherActivity extends Activity {
             return;
         }
 
-        // Check 2: OpenClaw configured (API key)?
-        if (!BotDropService.isOpenclawConfigured()) {
-            Logger.logInfo(LOG_TAG, "OpenClaw not configured, routing to auth setup");
+        // Check 2: OpenClaw installed?
+        if (!BotDropService.isOpenclawInstalled()) {
+            Logger.logInfo(LOG_TAG, "OpenClaw not installed, routing to agent selection");
             mStatusText.setText("Setup required...");
 
             Intent intent = new Intent(this, SetupActivity.class);
-            intent.putExtra(SetupActivity.EXTRA_START_STEP, SetupActivity.STEP_API_KEY);
+            intent.putExtra(SetupActivity.EXTRA_START_STEP, SetupActivity.STEP_AGENT_SELECT);
             startActivity(intent);
             finish();
             return;
         }
 
-        // Check 3: OpenClaw installed?
-        if (!BotDropService.isOpenclawInstalled()) {
-            Logger.logInfo(LOG_TAG, "OpenClaw not installed, routing to agent selection");
-            mStatusText.setText("Preparing installation...");
+        // Check 3: OpenClaw configured (API key)?
+        if (!BotDropService.isOpenclawConfigured()) {
+            Logger.logInfo(LOG_TAG, "OpenClaw not configured, routing to agent-first setup");
+            mStatusText.setText("Setup required...");
 
             Intent intent = new Intent(this, SetupActivity.class);
             intent.putExtra(SetupActivity.EXTRA_START_STEP, SetupActivity.STEP_AGENT_SELECT);

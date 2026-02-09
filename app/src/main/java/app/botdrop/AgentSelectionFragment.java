@@ -16,7 +16,7 @@ import com.termux.R;
 import com.termux.shared.logger.Logger;
 
 /**
- * Step 2 of setup: Choose which agent to install.
+ * Step 1 of setup: Choose which agent to install.
  *
  * Currently offers:
  * - OpenClaw (available, triggers install)

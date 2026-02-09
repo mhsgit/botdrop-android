@@ -119,9 +119,11 @@ public class BotDropConfig {
             
             JSONObject defaults = agents.getJSONObject("defaults");
 
+            String normalizedModel = normalizeModel(provider, model);
+
             // Set model as object: { primary: "provider/model" }
             JSONObject modelObj = new JSONObject();
-            modelObj.put("primary", provider + "/" + model);
+            modelObj.put("primary", provider + "/" + normalizedModel);
             defaults.put("model", modelObj);
             
             // Set workspace if not already set
@@ -160,6 +162,16 @@ public class BotDropConfig {
      * Writes to ~/.openclaw/agents/main/agent/auth-profiles.json
      */
     public static boolean setApiKey(String provider, String credential) {
+        return setApiKey(provider, null, credential);
+    }
+
+    /**
+     * Set the API key for a provider/model pair.
+     * Writes:
+     * - provider:model (model-specific entry)
+     * - provider:default (compatibility fallback)
+     */
+    public static boolean setApiKey(String provider, String model, String credential) {
         synchronized (CONFIG_LOCK) {
             try {
                 File dir = new File(AUTH_PROFILES_DIR);
@@ -184,13 +196,19 @@ public class BotDropConfig {
                     authProfiles.put("profiles", new JSONObject());
                 }
 
-                // Add/update profile: "provider:default" -> { type, provider, key }
+                String normalizedModel = normalizeModel(provider, model);
+                String modelProfileId = provider + ":" + normalizedModel;
+                String defaultProfileId = provider + ":default";
+
+                // Add/update profile: model-specific + default fallback
                 JSONObject profiles = authProfiles.getJSONObject("profiles");
                 JSONObject profile = new JSONObject();
                 profile.put("type", "api_key");
                 profile.put("provider", provider);
+                profile.put("model", normalizedModel);
                 profile.put("key", credential);
-                profiles.put(provider + ":default", profile);
+                profiles.put(modelProfileId, profile);
+                profiles.put(defaultProfileId, profile);
 
                 // Write
                 try (FileWriter writer = new FileWriter(authFile)) {
@@ -201,7 +219,8 @@ public class BotDropConfig {
                 authFile.setWritable(false, false);
                 authFile.setWritable(true, true);
 
-                Logger.logInfo(LOG_TAG, "Auth profile written for provider: " + provider);
+                Logger.logInfo(LOG_TAG, "Auth profile written for " + modelProfileId +
+                    " (and fallback " + defaultProfileId + ")");
                 return true;
 
             } catch (IOException | JSONException e) {
@@ -209,6 +228,63 @@ public class BotDropConfig {
                 return false;
             }
         }
+    }
+
+    /**
+     * Check whether auth-profiles contains a non-empty API key for provider.
+     */
+    public static boolean hasApiKey(String provider) {
+        synchronized (CONFIG_LOCK) {
+            try {
+                File authFile = new File(AUTH_PROFILES_FILE);
+                if (!authFile.exists()) return false;
+
+                JSONObject authProfiles;
+                try (FileReader reader = new FileReader(authFile)) {
+                    StringBuilder sb = new StringBuilder();
+                    char[] buffer = new char[1024];
+                    int read;
+                    while ((read = reader.read(buffer)) != -1) {
+                        sb.append(buffer, 0, read);
+                    }
+                    authProfiles = new JSONObject(sb.toString());
+                }
+
+                JSONObject profiles = authProfiles.optJSONObject("profiles");
+                if (profiles == null) return false;
+                JSONObject defaultProfile = profiles.optJSONObject(provider + ":default");
+                if (defaultProfile != null) {
+                    String key = defaultProfile.optString("key", "").trim();
+                    if (!key.isEmpty()) return true;
+                }
+
+                // Backstop: look for any provider:* entry with provider match.
+                java.util.Iterator<String> keys = profiles.keys();
+                while (keys.hasNext()) {
+                    String id = keys.next();
+                    JSONObject p = profiles.optJSONObject(id);
+                    if (p == null) continue;
+                    if (!provider.equals(p.optString("provider", ""))) continue;
+                    String key = p.optString("key", "").trim();
+                    if (!key.isEmpty()) return true;
+                }
+                return false;
+            } catch (Exception e) {
+                Logger.logError(LOG_TAG, "Failed to check auth profile: " + e.getMessage());
+                return false;
+            }
+        }
+    }
+
+    private static String normalizeModel(String provider, String model) {
+        if (model == null) return "default";
+        String normalized = model.trim();
+        if (normalized.isEmpty()) return "default";
+        String providerPrefix = provider + "/";
+        if (normalized.startsWith(providerPrefix)) {
+            normalized = normalized.substring(providerPrefix.length());
+        }
+        return normalized.isEmpty() ? "default" : normalized;
     }
 
     /**
@@ -241,6 +317,57 @@ public class BotDropConfig {
         } catch (JSONException e) {
             Logger.logError(LOG_TAG, "Failed to check config: " + e.getMessage());
             return false;
+        }
+    }
+
+    /**
+     * Remove known deprecated/unsupported keys from existing config.
+     * Safe to call repeatedly; writes only when a change is made.
+     */
+    public static void sanitizeLegacyConfig() {
+        synchronized (CONFIG_LOCK) {
+            try {
+                File configFile = new File(CONFIG_FILE);
+                if (!configFile.exists()) return;
+
+                JSONObject config = readConfig();
+                boolean changed = false;
+
+                JSONObject channels = config.optJSONObject("channels");
+                if (channels != null) {
+                    JSONObject telegram = channels.optJSONObject("telegram");
+                    if (telegram != null) {
+                        JSONObject network = telegram.optJSONObject("network");
+                        if (network == null) {
+                            network = new JSONObject();
+                            telegram.put("network", network);
+                            changed = true;
+                        }
+
+                        if (network.has("autoSelectFamilyAttemptTimeout")) {
+                            network.remove("autoSelectFamilyAttemptTimeout");
+                            changed = true;
+                            Logger.logInfo(LOG_TAG, "Removed deprecated key: channels.telegram.network.autoSelectFamilyAttemptTimeout");
+                        }
+
+                        // Ensure Telegram network uses Happy Eyeballs behavior on Android.
+                        if (!network.optBoolean("autoSelectFamily", false)) {
+                            network.put("autoSelectFamily", true);
+                            changed = true;
+                            Logger.logInfo(LOG_TAG, "Set channels.telegram.network.autoSelectFamily=true");
+                        }
+                    }
+                }
+
+                if (changed) {
+                    boolean ok = writeConfig(config);
+                    if (!ok) {
+                        Logger.logError(LOG_TAG, "Failed to write sanitized config");
+                    }
+                }
+            } catch (Exception e) {
+                Logger.logError(LOG_TAG, "sanitizeLegacyConfig failed: " + e.getMessage());
+            }
         }
     }
 }

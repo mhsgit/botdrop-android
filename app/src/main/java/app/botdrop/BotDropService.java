@@ -137,12 +137,19 @@ public class BotDropService extends Service {
             Logger.logDebug(LOG_TAG, "Executing: " + command);
             process = pb.start();
 
+            boolean isModelListCommand = command.contains("openclaw models list");
+            int loggedLines = 0;
+            final int MAX_VERBOSE_LINES = 20;
+
             // Read stdout (stderr is merged via redirectErrorStream)
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
                 String line;
                 while ((line = reader.readLine()) != null) {
                     stdout.append(line).append("\n");
-                    Logger.logVerbose(LOG_TAG, "stdout: " + line);
+                    if (!isModelListCommand || loggedLines < MAX_VERBOSE_LINES) {
+                        Logger.logVerbose(LOG_TAG, "stdout: " + line);
+                        loggedLines++;
+                    }
                 }
             }
 
@@ -372,6 +379,10 @@ public class BotDropService extends Service {
     private static final String GATEWAY_LOG_FILE = TermuxConstants.TERMUX_HOME_DIR_PATH + "/.openclaw/gateway.log";
 
     public void startGateway(CommandCallback callback) {
+        // Ensure legacy config keys are repaired right before starting the gateway.
+        // This matters for in-place upgrades where users won't re-run channel setup.
+        BotDropConfig.sanitizeLegacyConfig();
+
         String logDir = TermuxConstants.TERMUX_HOME_DIR_PATH + "/.openclaw";
         String debugLog = logDir + "/gateway-debug.log";
         String home = TermuxConstants.TERMUX_HOME_DIR_PATH;
@@ -404,7 +415,7 @@ public class BotDropService extends Service {
             "echo \"SSL_CERT_FILE=$SSL_CERT_FILE\" >&2\n" +
             "echo \"Testing cert file access:\" >&2\n" +
             "ls -lh $PREFIX/etc/tls/cert.pem >&2 || echo \"cert.pem not found!\" >&2\n" +
-            "$PREFIX/bin/termux-chroot sh -c 'echo \"=== Inside chroot ===\"; echo \"SSL_CERT_FILE=$SSL_CERT_FILE\"; openclaw gateway run' >> " + GATEWAY_LOG_FILE + " 2>&1 &\n" +
+            "$PREFIX/bin/termux-chroot sh -c 'echo \"=== Inside chroot ===\"; echo \"SSL_CERT_FILE=$SSL_CERT_FILE\"; openclaw gateway run --force' >> " + GATEWAY_LOG_FILE + " 2>&1 &\n" +
             "GW_PID=$!\n" +
             "echo $GW_PID > " + GATEWAY_PID_FILE + "\n" +
             "echo \"gateway pid: $GW_PID\" >&2\n" +
@@ -464,4 +475,5 @@ public class BotDropService extends Service {
             "else echo '—'; fi";
         executeCommand(cmd, callback);
     }
+
 }

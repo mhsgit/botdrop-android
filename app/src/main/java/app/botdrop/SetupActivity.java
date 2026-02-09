@@ -4,7 +4,6 @@ import android.content.Intent;
 import android.os.Bundle;
 import android.view.View;
 import android.widget.Button;
-import android.widget.ImageButton;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
@@ -21,9 +20,9 @@ import com.termux.shared.logger.Logger;
 
 /**
  * Setup wizard with 4 steps:
- * Step 0 (STEP_INSTALL): Install openclaw
- * Step 1 (STEP_API_KEY): Choose AI + API Key
- * Step 2 (STEP_AGENT_SELECT): Agent Selection
+ * Step 0 (STEP_AGENT_SELECT): Agent Selection
+ * Step 1 (STEP_INSTALL): Install openclaw
+ * Step 2 (STEP_API_KEY): Choose AI + API Key
  * Step 3 (STEP_CHANNEL): Telegram Config
  */
 
@@ -41,10 +40,10 @@ public class SetupActivity extends AppCompatActivity {
         boolean handleNext();
     }
 
-    // Step constants (reordered: Install first, then Choose AI)
-    public static final int STEP_INSTALL = 0;       // Step 1: Install openclaw
-    public static final int STEP_API_KEY = 1;       // Step 2: Choose AI + API Key
-    public static final int STEP_AGENT_SELECT = 2;  // Step 3: Agent Selection
+    // Step constants (Agent selection first, then install)
+    public static final int STEP_AGENT_SELECT = 0;  // Step 1: Agent Selection
+    public static final int STEP_INSTALL = 1;       // Step 2: Install openclaw
+    public static final int STEP_API_KEY = 2;       // Step 3: Choose AI + API Key
     public static final int STEP_CHANNEL = 3;       // Step 4: Telegram config
     private static final int STEP_COUNT = 4;
 
@@ -79,7 +78,7 @@ public class SetupActivity extends AppCompatActivity {
         mViewPager.setUserInputEnabled(false); // Disable swipe, only programmatic navigation
 
         // Start at specified step
-        int startStep = getIntent().getIntExtra(EXTRA_START_STEP, STEP_INSTALL);
+        int startStep = getIntent().getIntExtra(EXTRA_START_STEP, STEP_AGENT_SELECT);
         mViewPager.setCurrentItem(startStep, false);
 
         // Set up navigation buttons (hidden by default, fragments can show if needed)
@@ -106,7 +105,7 @@ public class SetupActivity extends AppCompatActivity {
         });
 
         // Setup manual update check button
-        ImageButton checkUpdatesBtn = findViewById(R.id.setup_check_updates);
+        Button checkUpdatesBtn = findViewById(R.id.setup_check_updates);
         checkUpdatesBtn.setOnClickListener(v -> {
             v.setEnabled(false);
             UpdateChecker.forceCheck(this, (version, url, notes) -> {
@@ -246,12 +245,12 @@ public class SetupActivity extends AppCompatActivity {
         @Override
         public Fragment createFragment(int position) {
             switch (position) {
+                case STEP_AGENT_SELECT:
+                    return new AgentSelectionFragment();
                 case STEP_INSTALL:
                     return new InstallFragment();
                 case STEP_API_KEY:
                     return new AuthFragment();
-                case STEP_AGENT_SELECT:
-                    return new AgentSelectionFragment();
                 case STEP_CHANNEL:
                     return new ChannelFragment();
                 default:
