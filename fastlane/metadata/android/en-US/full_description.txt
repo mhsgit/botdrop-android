@@ -1,0 +1,9 @@
+BotDrop wraps OpenClaw into a user-friendly Android app. Install, configure, and manage your AI agent in 4 simple steps.
+
+* Guided 4-step setup — Auth → Agent → Install → Channel
+* Multi-provider support — Anthropic, OpenAI, Google Gemini, OpenRouter, and more
+* Telegram & Discord integration — Chat with your agent through your favorite messenger
+* Background gateway — Keeps your agent running with auto-restart
+* No terminal required — Everything happens through the GUI
+
+BotDrop is built on Termux, providing a Linux environment for running Node.js-based AI agents on Android.
