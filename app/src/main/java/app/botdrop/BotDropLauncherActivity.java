@@ -42,6 +42,8 @@ public class BotDropLauncherActivity extends Activity {
     private static final String LOG_TAG = "BotDropLauncherActivity";
     private static final int REQUEST_CODE_NOTIFICATION_SETTINGS = 1001;
     private static final int REQUEST_CODE_BATTERY_OPTIMIZATION = 1002;
+    private static final String PREFS_NAME = "botdrop_launcher";
+    private static final String PREF_ONBOARDING_CONTINUE = "onboarding_continue_clicked";
 
     // Views
     private View mWelcomeContainer;
@@ -58,6 +60,7 @@ public class BotDropLauncherActivity extends Activity {
 
     private Handler mHandler = new Handler(Looper.getMainLooper());
     private boolean mPermissionsPhaseComplete = false;
+    private boolean mContinueClickedPersisted = false;
 
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
@@ -76,6 +79,9 @@ public class BotDropLauncherActivity extends Activity {
         mBatteryStatus = findViewById(R.id.battery_status);
         mBackgroundHintText = findViewById(R.id.background_hint_text);
 
+        mContinueClickedPersisted = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+            .getBoolean(PREF_ONBOARDING_CONTINUE, false);
+
         // Upgrade migration: clean deprecated keys from existing OpenClaw config.
         BotDropConfig.sanitizeLegacyConfig();
 
@@ -88,6 +94,11 @@ public class BotDropLauncherActivity extends Activity {
         mCheckUpdateButton.setOnClickListener(v -> checkUpdateManually());
         mContinueButton.setOnClickListener(v -> {
             mPermissionsPhaseComplete = true;
+            getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+                .edit()
+                .putBoolean(PREF_ONBOARDING_CONTINUE, true)
+                .apply();
+            mContinueClickedPersisted = true;
             showLoadingPhase();
             mHandler.postDelayed(this::checkAndRoute, 300);
         });
@@ -97,23 +108,15 @@ public class BotDropLauncherActivity extends Activity {
     protected void onResume() {
         super.onResume();
 
-        if (mPermissionsPhaseComplete) {
-            // Already past the welcome screen
+        if (mPermissionsPhaseComplete || mContinueClickedPersisted) {
+            // User has explicitly continued before; proceed automatically.
             showLoadingPhase();
             mHandler.postDelayed(this::checkAndRoute, 300);
             return;
         }
 
-        // Check if all permissions are already granted (returning user)
-        if (areNotificationsEnabled() && isBatteryOptimizationExempt()) {
-            Logger.logInfo(LOG_TAG, "All permissions already granted, skipping welcome");
-            mPermissionsPhaseComplete = true;
-            showLoadingPhase();
-            mHandler.postDelayed(this::checkAndRoute, 300);
-            return;
-        }
-
-        // Show welcome screen and update permission status
+        // Show welcome screen and update permission status. Do not auto-advance:
+        // the user must tap Continue to start bootstrap/setup work.
         showWelcomePhase();
         updatePermissionStatus();
     }

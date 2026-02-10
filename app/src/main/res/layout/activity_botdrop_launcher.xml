@@ -165,7 +165,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Battery (Unrestricted)"
+                        android:text="Advanced Background Settings"
                         android:textSize="16sp"
                         android:textStyle="bold"
                         android:textColor="@color/botdrop_on_background" />
@@ -174,7 +174,7 @@
                         android:id="@+id/background_hint_text"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="If the bot pauses in background, set Battery to Unrestricted and allow Background data."
+                        android:text="Recommended: set Battery to Unrestricted and allow Background data (some devices throttle by default)."
                         android:textSize="13sp"
                         android:textColor="@color/botdrop_secondary_text" />
                 </LinearLayout>
