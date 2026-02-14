@@ -64,6 +64,10 @@ public class ModelSelectorDialog extends Dialog {
     private static final String MODELS_PATH_SUFFIX = "/models";
     private static final String CUSTOM_PROVIDER_ID = BotDropConfig.CUSTOM_PROVIDER_ID;
     private static final String CUSTOM_PROVIDER_DISPLAY_NAME = "Custom Provider";
+    private static final String PROVIDER_SECTION_CONFIGURED = "Configured providers";
+    private static final String PROVIDER_SECTION_UNCONFIGURED = "Not configured providers";
+    private static final String PROVIDER_STATUS_CONFIGURED = "Configured";
+    private static final String PROVIDER_STATUS_UNCONFIGURED = "Not configured";
 
     // Cached in-memory for the currently active OpenClaw version.
     private static List<ModelInfo> sCachedAllModels;
@@ -182,7 +186,9 @@ public class ModelSelectorDialog extends Dialog {
 
         mAdapter = new ModelListAdapter(model -> {
             if (mSelectingProvider) {
-                if (model != null && !TextUtils.isEmpty(model.provider) && TextUtils.isEmpty(model.model)) {
+                if (model != null && !model.isSectionHeader
+                    && !TextUtils.isEmpty(model.provider)
+                    && TextUtils.isEmpty(model.model)) {
                     handleProviderSelection(model.provider);
                 }
                 return;
@@ -467,12 +473,6 @@ public class ModelSelectorDialog extends Dialog {
         apiKeyInput.setTextColor(getContext().getColor(R.color.botdrop_on_background));
         apiKeyInput.setText("");
 
-        if (!TextUtils.isEmpty(currentProviderKey)) {
-            cacheApiKey(keyLookupProvider, currentProviderKey);
-        }
-
-        renderCachedKeys(keyLookupProvider, apiKeyInput, cachedKeysContainer, cachedTitle);
-
         android.app.AlertDialog dialog = new android.app.AlertDialog.Builder(getContext())
             .setView(content)
             .create();
@@ -480,12 +480,24 @@ public class ModelSelectorDialog extends Dialog {
         ImageButton closeButton = content.findViewById(R.id.change_model_close_button);
         Button cancelButton = content.findViewById(R.id.change_model_cancel_button);
         Button confirmButton = content.findViewById(R.id.change_model_confirm_button);
-        if (confirmButton != null) {
-            confirmButton.setText(useCustomEndpoint ? "Fetch Models" : "Continue");
-        }
+        final boolean[] inDeleteMode = {false};
+        Runnable updateConfirmButton = () -> {
+            if (confirmButton == null) {
+                return;
+            }
+            confirmButton.setText(inDeleteMode[0]
+                ? "Confirm"
+                : (useCustomEndpoint ? "Fetch Models" : "Continue"));
+        };
+        updateConfirmButton.run();
 
         final boolean[] confirmed = {false};
         Runnable submitProviderCredentials = () -> {
+            if (inDeleteMode[0]) {
+                dialog.dismiss();
+                return;
+            }
+
             String newApiKey = apiKeyInput.getText().toString().trim();
             String newBaseUrl = baseUrlInput.getText().toString().trim();
             String requestedProvider = provider;
@@ -573,7 +585,29 @@ public class ModelSelectorDialog extends Dialog {
         }
         if (confirmButton != null) {
             confirmButton.setOnClickListener(v -> submitProviderCredentials.run());
+            apiKeyInput.addTextChangedListener(new TextWatcher() {
+                @Override
+                public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+
+                @Override
+                public void onTextChanged(CharSequence s, int start, int before, int count) {
+                    if (!inDeleteMode[0]) {
+                        return;
+                    }
+                    inDeleteMode[0] = false;
+                    updateConfirmButton.run();
+                }
+
+                @Override
+                public void afterTextChanged(Editable s) {}
+            });
         }
+        Runnable onCacheUpdated = () -> {
+            inDeleteMode[0] = true;
+            updateConfirmButton.run();
+        };
+
+        renderCachedKeys(keyLookupProvider, apiKeyInput, cachedKeysContainer, cachedTitle, onCacheUpdated);
         if (dialog.getWindow() != null) {
             dialog.getWindow().setBackgroundDrawableResource(android.R.color.transparent);
         }
@@ -886,7 +920,7 @@ public class ModelSelectorDialog extends Dialog {
         mPendingAvailableModels = null;
     }
 
-    private void renderCachedKeys(String provider, EditText apiKeyInput, LinearLayout container, TextView titleText) {
+    private void renderCachedKeys(String provider, EditText apiKeyInput, LinearLayout container, TextView titleText, Runnable onCacheUpdated) {
         if (container == null || TextUtils.isEmpty(provider) || getContext() == null) {
             return;
         }
@@ -965,7 +999,13 @@ public class ModelSelectorDialog extends Dialog {
             deleteAction.setLayoutParams(deleteLp);
             deleteAction.setOnClickListener(v -> {
                 removeCachedApiKey(provider, key);
-                renderCachedKeys(provider, apiKeyInput, container, titleText);
+                if (TextUtils.equals(apiKeyInput.getText().toString().trim(), key)) {
+                    apiKeyInput.setText("");
+                }
+                if (onCacheUpdated != null) {
+                    onCacheUpdated.run();
+                }
+                renderCachedKeys(provider, apiKeyInput, container, titleText, onCacheUpdated);
             });
             row.addView(deleteAction);
 
@@ -1034,22 +1074,110 @@ public class ModelSelectorDialog extends Dialog {
         }
 
         try {
-            List<String> existing = loadCachedApiKeys(provider);
-            if (existing.remove(key)) {
-                JSONArray list = new JSONArray();
-                for (String item : existing) {
-                    if (!TextUtils.isEmpty(item)) {
-                        list.put(item);
-                    }
-                }
-                getContext().getSharedPreferences(KEY_CACHE_PREFS_NAME, Context.MODE_PRIVATE)
-                    .edit()
-                    .putString(keyCacheKey(provider), list.toString())
-                    .apply();
+            SharedPreferences prefs = getContext().getSharedPreferences(KEY_CACHE_PREFS_NAME, Context.MODE_PRIVATE);
+            SharedPreferences.Editor editor = prefs.edit();
+            String normalizedKey = key.trim();
+            boolean removed = false;
+
+            removed |= removeCachedKeyFromSingleStore(editor, keyCacheKey(provider), normalizedKey, prefs);
+            removed |= removeCachedKeyFromLegacyStores(editor, provider, normalizedKey, prefs);
+
+            if (removed) {
+                editor.apply();
             }
         } catch (Exception e) {
             Logger.logError(LOG_TAG, "Failed to remove cached API key: " + e.getMessage());
         }
+    }
+
+    private boolean removeCachedKeyFromSingleStore(SharedPreferences.Editor editor, String storeKey, String normalizedKey, SharedPreferences prefs) {
+        if (editor == null || TextUtils.isEmpty(storeKey) || TextUtils.isEmpty(normalizedKey) || prefs == null) {
+            return false;
+        }
+
+        String raw = prefs.getString(storeKey, null);
+        if (TextUtils.isEmpty(raw)) {
+            return false;
+        }
+
+        try {
+            JSONArray list = new JSONArray(raw);
+            List<String> existing = new ArrayList<>();
+            for (int i = 0; i < list.length(); i++) {
+                String value = list.optString(i, "").trim();
+                if (!TextUtils.isEmpty(value) && !TextUtils.equals(value, normalizedKey)) {
+                    existing.add(value);
+                }
+            }
+
+            if (existing.size() == list.length()) {
+                return false;
+            }
+
+            if (existing.isEmpty()) {
+                editor.remove(storeKey);
+                return true;
+            }
+
+            JSONArray merged = new JSONArray();
+            for (String item : existing) {
+                merged.put(item);
+            }
+            editor.putString(storeKey, merged.toString());
+            return true;
+        } catch (org.json.JSONException e) {
+            Logger.logError(LOG_TAG, "Failed to parse cached key store: " + e.getMessage());
+            return false;
+        }
+    }
+
+    private boolean removeCachedKeyFromLegacyStores(SharedPreferences.Editor editor, String provider, String normalizedKey, SharedPreferences prefs) {
+        if (editor == null || prefs == null || TextUtils.isEmpty(provider) || TextUtils.isEmpty(normalizedKey)) {
+            return false;
+        }
+
+        String legacyPrefix = KEY_CACHE_PREFIX_LEGACY + normalizeCacheSegment(provider) + "_";
+        boolean removed = false;
+
+        for (String storeKey : prefs.getAll().keySet()) {
+            if (!storeKey.startsWith(legacyPrefix)) {
+                continue;
+            }
+            Object rawStoreValue = prefs.getAll().get(storeKey);
+            if (!(rawStoreValue instanceof String)) {
+                continue;
+            }
+
+            String raw = (String) rawStoreValue;
+            try {
+                JSONArray legacyRaw = new JSONArray(raw);
+                List<String> existing = new ArrayList<>();
+                for (int i = 0; i < legacyRaw.length(); i++) {
+                    String value = legacyRaw.optString(i, "").trim();
+                    if (!TextUtils.isEmpty(value) && !TextUtils.equals(value, normalizedKey)) {
+                        existing.add(value);
+                    }
+                }
+
+                if (existing.size() == legacyRaw.length()) {
+                    continue;
+                }
+                removed = true;
+                if (existing.isEmpty()) {
+                    editor.remove(storeKey);
+                } else {
+                    JSONArray merged = new JSONArray();
+                    for (String item : existing) {
+                        merged.put(item);
+                    }
+                    editor.putString(storeKey, merged.toString());
+                }
+            } catch (org.json.JSONException e) {
+                Logger.logError(LOG_TAG, "Failed to parse legacy cached key store: " + e.getMessage());
+            }
+        }
+
+        return removed;
     }
 
     private List<String> loadCachedApiKeys(String provider) {
@@ -1211,6 +1339,7 @@ public class ModelSelectorDialog extends Dialog {
         mSelectingProvider = true;
         mCurrentProvider = null;
         mCurrentItems = new ArrayList<>();
+        ModelInfo customProviderItem = null;
 
         List<String> providers = new ArrayList<>();
         for (ModelInfo model : mAllModels) {
@@ -1220,7 +1349,8 @@ public class ModelSelectorDialog extends Dialog {
         }
 
         if (mPromptForApiKey) {
-            mCurrentItems.add(new ModelInfo(CUSTOM_PROVIDER_DISPLAY_NAME, CUSTOM_PROVIDER_ID, ""));
+            customProviderItem = new ModelInfo(CUSTOM_PROVIDER_DISPLAY_NAME, CUSTOM_PROVIDER_ID, "");
+            customProviderItem.statusText = "Add custom provider";
 
             List<String> customProviders = BotDropConfig.getConfiguredCustomProviders();
             for (String customProvider : customProviders) {
@@ -1236,25 +1366,40 @@ public class ModelSelectorDialog extends Dialog {
 
         Collections.sort(providers, String::compareToIgnoreCase);
 
-        List<String> keyedProviders = new ArrayList<>();
-        List<String> unkeyedProviders = new ArrayList<>();
+        List<String> configuredProviders = new ArrayList<>();
+        List<String> unconfiguredProviders = new ArrayList<>();
         for (String provider : providers) {
             if (TextUtils.isEmpty(provider) || TextUtils.equals(provider, CUSTOM_PROVIDER_ID)) {
                 continue;
             }
 
-            if (BotDropConfig.hasApiKey(provider)) {
-                keyedProviders.add(provider);
+            if (hasCachedKeysForProvider(provider)) {
+                configuredProviders.add(provider);
             } else {
-                unkeyedProviders.add(provider);
+                unconfiguredProviders.add(provider);
             }
         }
 
-        for (String provider : keyedProviders) {
-            mCurrentItems.add(new ModelInfo(provider, provider, ""));
+        Collections.sort(configuredProviders, String::compareToIgnoreCase);
+        Collections.sort(unconfiguredProviders, String::compareToIgnoreCase);
+
+        if (!configuredProviders.isEmpty()) {
+            mCurrentItems.add(createSectionHeader(PROVIDER_SECTION_CONFIGURED));
+            for (String provider : configuredProviders) {
+                mCurrentItems.add(createProviderListItem(provider, PROVIDER_STATUS_CONFIGURED, false));
+            }
         }
-        for (String provider : unkeyedProviders) {
-            mCurrentItems.add(new ModelInfo(provider, provider, ""));
+        if (!unconfiguredProviders.isEmpty() || customProviderItem != null) {
+            mCurrentItems.add(createSectionHeader(PROVIDER_SECTION_UNCONFIGURED));
+            if (customProviderItem != null) {
+                mCurrentItems.add(customProviderItem);
+            }
+            for (String provider : unconfiguredProviders) {
+                mCurrentItems.add(createProviderListItem(provider, PROVIDER_STATUS_UNCONFIGURED, false));
+            }
+        }
+        if (mCurrentItems.isEmpty()) {
+            mCurrentItems.add(createSectionHeader("No provider available"));
         }
 
         mSearchBox.setText("");
@@ -1271,6 +1416,22 @@ public class ModelSelectorDialog extends Dialog {
             return;
         }
         showList();
+    }
+
+    private ModelInfo createSectionHeader(String title) {
+        ModelInfo header = new ModelInfo(title, "", "");
+        header.isSectionHeader = true;
+        return header;
+    }
+
+    private ModelInfo createProviderListItem(String provider, String statusText, boolean asHeader) {
+        if (TextUtils.isEmpty(provider)) {
+            return createSectionHeader("No provider available");
+        }
+        ModelInfo item = new ModelInfo(provider, provider, "");
+        item.statusText = statusText;
+        item.isSectionHeader = asHeader;
+        return item;
     }
 
     private void showModelSelection(String provider) {
@@ -1309,6 +1470,11 @@ public class ModelSelectorDialog extends Dialog {
         }
 
         return false;
+    }
+
+    private boolean hasCachedKeysForProvider(String provider) {
+        List<String> cachedKeys = loadCachedApiKeys(provider);
+        return cachedKeys != null && !cachedKeys.isEmpty();
     }
 
     private void showModelSelection(String provider, List<ModelInfo> modelsForProvider) {

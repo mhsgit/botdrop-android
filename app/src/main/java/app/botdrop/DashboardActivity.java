@@ -1249,28 +1249,34 @@ public class DashboardActivity extends Activity {
      * Load channel configuration and update UI
      */
     private void loadChannelInfo() {
+        mTelegramStatus.setText("○ —");
+        mTelegramStatus.setTextColor(ContextCompat.getColor(this, R.color.status_disconnected));
+        mDiscordStatus.setText("○ —");
+        mDiscordStatus.setTextColor(ContextCompat.getColor(this, R.color.status_disconnected));
+
         try {
             JSONObject config = BotDropConfig.readConfig();
-            if (config.has("channels")) {
-                JSONObject channels = config.getJSONObject("channels");
+            JSONObject channels = config != null ? config.optJSONObject("channels") : null;
+            if (channels == null) {
+                return;
+            }
 
-                // Check Telegram
-                if (channels.has("telegram")) {
-                    mTelegramStatus.setText("● Connected");
-                    mTelegramStatus.setTextColor(ContextCompat.getColor(this, R.color.status_connected));
-                } else {
-                    mTelegramStatus.setText("○ —");
-                    mTelegramStatus.setTextColor(ContextCompat.getColor(this, R.color.status_disconnected));
-                }
+            JSONObject telegram = channels.optJSONObject("telegram");
+            boolean telegramConnected = telegram != null
+                    && telegram.optBoolean("enabled", true)
+                    && !TextUtils.isEmpty(telegram.optString("botToken", "").trim());
+            if (telegramConnected) {
+                mTelegramStatus.setText("● Connected");
+                mTelegramStatus.setTextColor(ContextCompat.getColor(this, R.color.status_connected));
+            }
 
-                // Check Discord
-                if (channels.has("discord")) {
-                    mDiscordStatus.setText("● Connected");
-                    mDiscordStatus.setTextColor(ContextCompat.getColor(this, R.color.status_connected));
-                } else {
-                    mDiscordStatus.setText("○ —");
-                    mDiscordStatus.setTextColor(ContextCompat.getColor(this, R.color.status_disconnected));
-                }
+            JSONObject discord = channels.optJSONObject("discord");
+            boolean discordConnected = discord != null
+                    && discord.optBoolean("enabled", true)
+                    && !TextUtils.isEmpty(discord.optString("token", "").trim());
+            if (discordConnected) {
+                mDiscordStatus.setText("● Connected");
+                mDiscordStatus.setTextColor(ContextCompat.getColor(this, R.color.status_connected));
             }
         } catch (Exception e) {
             Logger.logError(LOG_TAG, "Failed to load channel info: " + e.getMessage());
