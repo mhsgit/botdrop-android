@@ -40,8 +40,14 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.File;
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
+import java.io.BufferedReader;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.FileReader;
 import java.io.FileWriter;
+import java.io.IOException;
 import java.net.HttpURLConnection;
 import java.net.Inet4Address;
 import java.net.InetAddress;
@@ -56,8 +62,13 @@ import java.util.Comparator;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
+import java.util.zip.ZipOutputStream;
 
 /**
  * Dashboard activity - main screen after setup is complete.
@@ -84,18 +95,25 @@ public class DashboardActivity extends Activity {
     private static final String OPENCLAW_WEB_UI_TOKEN_KEY = "token";
     private static final String OPENCLAW_WEB_UI_BUTTON_TEXT_DEFAULT = "Open Web UI";
     private static final String OPENCLAW_WEB_UI_BUTTON_TEXT_PENDING = "Opening Web UI";
-    private static final String OPENCLAW_CONFIG_FILE = TermuxConstants.TERMUX_HOME_DIR_PATH + "/.openclaw/openclaw.json";
-    private static final String OPENCLAW_AUTH_PROFILES_FILE = TermuxConstants.TERMUX_HOME_DIR_PATH + "/.openclaw/agents/main/agent/auth-profiles.json";
+    private static final String OPENCLAW_HOME_FOLDER = ".openclaw";
+    private static final String BOTDROP_HOME_FOLDER = "botdrop";
     private static final String GATEWAY_LOG_FILE = TermuxConstants.TERMUX_HOME_DIR_PATH + "/.openclaw/gateway.log";
     private static final String GATEWAY_DEBUG_LOG_FILE = TermuxConstants.TERMUX_HOME_DIR_PATH + "/.openclaw/gateway-debug.log";
     private static final String OPENCLAW_BACKUP_DIRECTORY = "BotDrop/openclaw";
     private static final String OPENCLAW_BACKUP_FILE_PREFIX = "openclaw-config-backup-";
-    private static final String OPENCLAW_BACKUP_FILE_EXTENSION = ".json";
+    private static final String OPENCLAW_BACKUP_FILE_EXTENSION = ".zip";
+    private static final String OPENCLAW_BACKUP_FILE_EXTENSION_JSON = ".json";
+    private static final String OPENCLAW_CONFIG_FILE = TermuxConstants.TERMUX_HOME_DIR_PATH + "/.openclaw/openclaw.json";
+    private static final String OPENCLAW_AUTH_PROFILES_FILE = TermuxConstants.TERMUX_HOME_DIR_PATH + "/.openclaw/agents/main/agent/auth-profiles.json";
     private static final String OPENCLAW_BACKUP_DATE_PATTERN = "yyyyMMdd_HHmmss";
     private static final String OPENCLAW_BACKUP_META_OPENCLAW_CONFIG_KEY = "openclawConfig";
     private static final String OPENCLAW_BACKUP_META_AUTH_PROFILES_KEY = "authProfiles";
     private static final String OPENCLAW_BACKUP_META_CREATED_AT_KEY = "createdAt";
+    private static final int OPENCLAW_BACKUP_IO_BUFFER_SIZE = 8192;
     private static final int OPENCLAW_STORAGE_PERMISSION_REQUEST_CODE = 3001;
+    private static final String OPENCLAW_RESTORE_STAGING_DIR_PREFIX = ".openclaw_restore_staging_";
+    private static final String OPENCLAW_RESTORE_BACKUP_DIR_PREFIX = ".openclaw_restore_backup_";
+    private static final String BOTDROP_RESTORE_BACKUP_DIR_PREFIX = ".botdrop_restore_backup_";
     private static final Pattern WEB_UI_URL_PATTERN =
             Pattern.compile("(?i)https?://[^\\s\"'`<>\\)\\]}]+");
     private static final Pattern HOST_PORT_PATTERN =
@@ -152,6 +170,7 @@ public class DashboardActivity extends Activity {
     private long mLastErrorCheckAtMs = 0L;
     private String mLastErrorMessage;
     private Runnable mPendingOpenclawStorageAction;
+    private Runnable mPendingOpenclawStorageDeniedAction;
 
     private interface ModelListPrefetchCallback {
         void onFinished(boolean success);
@@ -369,19 +388,23 @@ public class DashboardActivity extends Activity {
                 runOnUiThread(() -> {
                     setButtonEnabled(mOpenclawBackupButton, true);
                     if (TextUtils.isEmpty(backupPath)) {
-                        Toast.makeText(this, "No OpenClaw config available to backup", Toast.LENGTH_SHORT).show();
+                        Toast.makeText(this, "No OpenClaw data folder available to backup", Toast.LENGTH_SHORT).show();
                         return;
                     }
                     Toast.makeText(
                         this,
-                        "OpenClaw config backed up successfully:\n"
+                        "OpenClaw backup created:\n"
                             + backupPath
-                            + "\nIncludes openclaw.json and auth-profiles.json (including Telegram botToken).",
+                            + "\nIncludes full .openclaw and botdrop folders.",
                         Toast.LENGTH_LONG
                     ).show();
                 });
             }).start();
-        });
+        }, () -> Toast.makeText(
+            this,
+            "Storage permission is required to backup OpenClaw data",
+            Toast.LENGTH_SHORT
+        ).show());
     }
 
     private void restoreOpenclawConfigFromSdcard() {
@@ -397,11 +420,34 @@ public class DashboardActivity extends Activity {
             }
 
             confirmOpenclawRestore(backupFile);
-        });
+        }, () -> Toast.makeText(
+            this,
+            "Storage permission is required to restore OpenClaw data",
+            Toast.LENGTH_SHORT
+        ).show());
     }
 
     private void runWithOpenclawStoragePermission(@NonNull Runnable action) {
+        runWithOpenclawStoragePermission(action, null);
+    }
+
+    private void runWithOpenclawStoragePermission(@NonNull Runnable action, @Nullable Runnable deniedAction) {
         File backupDir = getOpenclawBackupDirectory();
+        if (isOpenclawStoragePermissionGranted()) {
+            action.run();
+            return;
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (PermissionUtils.requestManageStorageExternalPermission(this, OPENCLAW_STORAGE_PERMISSION_REQUEST_CODE) == null) {
+                mPendingOpenclawStorageAction = action;
+                mPendingOpenclawStorageDeniedAction = deniedAction;
+            } else if (deniedAction != null) {
+                deniedAction.run();
+            }
+            return;
+        }
+
         if (PermissionUtils.checkAndRequestLegacyOrManageExternalStoragePermissionIfPathOnPrimaryExternalStorage(
             this,
             backupDir.getAbsolutePath(),
@@ -412,34 +458,51 @@ public class DashboardActivity extends Activity {
             return;
         }
         mPendingOpenclawStorageAction = action;
+        mPendingOpenclawStorageDeniedAction = deniedAction;
     }
 
     private void retryPendingOpenclawStorageActionIfPermitted() {
         Runnable action = mPendingOpenclawStorageAction;
+        Runnable deniedAction = mPendingOpenclawStorageDeniedAction;
         if (action == null) {
             return;
         }
         mPendingOpenclawStorageAction = null;
-        if (!PermissionUtils.checkStoragePermission(this, PermissionUtils.isLegacyExternalStoragePossible(this))) {
-            Toast.makeText(
-                this,
-                "Storage permission is required to restore or backup OpenClaw config",
-                Toast.LENGTH_SHORT
-            ).show();
+        mPendingOpenclawStorageDeniedAction = null;
+        if (!isOpenclawStoragePermissionGranted()) {
+            if (deniedAction != null) {
+                deniedAction.run();
+            } else {
+                Toast.makeText(
+                    this,
+                    "Storage permission is required to backup or restore OpenClaw data",
+                    Toast.LENGTH_SHORT
+                ).show();
+            }
             return;
         }
         action.run();
     }
 
+    private boolean isOpenclawStoragePermissionGranted() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+            return true;
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            return Environment.isExternalStorageManager();
+        }
+        return PermissionUtils.checkStoragePermission(this, PermissionUtils.isLegacyExternalStoragePossible(this));
+    }
+
     private void confirmOpenclawRestore(File backupFile) {
         String createdAtText = formatBackupTimestamp(readBackupCreatedAt(backupFile));
-        String message = "Restore OpenClaw config from:\n"
+        String message = "Restore OpenClaw data from:\n"
             + backupFile.getName()
             + "\nCreated at: " + createdAtText
-            + "\n\nCurrent config files will be replaced.";
+            + "\n\nCurrent data files will be replaced.";
 
         new AlertDialog.Builder(this)
-            .setTitle("Restore OpenClaw Config")
+            .setTitle("Restore OpenClaw Data")
             .setMessage(message)
             .setNegativeButton("Cancel", null)
             .setPositiveButton("Restore", (dialog, which) -> performOpenclawRestore(backupFile))
@@ -453,14 +516,14 @@ public class DashboardActivity extends Activity {
             runOnUiThread(() -> {
                 setButtonEnabled(mOpenclawRestoreButton, true);
                 if (!restored) {
-                    Toast.makeText(this, "Failed to restore OpenClaw config", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(this, "Failed to restore OpenClaw data", Toast.LENGTH_SHORT).show();
                     return;
                 }
                 loadCurrentModel();
                 loadChannelInfo();
                 Toast.makeText(
                     this,
-                    "OpenClaw config restored\nIncludes openclaw.json and auth-profiles.json (including Telegram botToken).",
+                    "OpenClaw folder restored successfully.",
                     Toast.LENGTH_LONG
                 ).show();
             });
@@ -468,29 +531,227 @@ public class DashboardActivity extends Activity {
     }
 
     private boolean applyOpenclawBackup(File backupFile) {
+        if (isLegacyOpenclawBackupFile(backupFile)) {
+            return applyLegacyOpenclawBackup(backupFile);
+        }
+        File openclawDir = getOpenclawHomeDirectory();
+        File botdropDir = getBotdropHomeDirectory();
+        if (openclawDir == null || botdropDir == null) {
+            return false;
+        }
+
+        File homeDir = openclawDir.getParentFile();
+        if (homeDir != null && !homeDir.exists() && !homeDir.mkdirs()) {
+            Logger.logWarn(LOG_TAG, "Failed to recreate openclaw home parent: " + homeDir.getAbsolutePath());
+            return false;
+        }
+        if (homeDir == null) {
+            Logger.logWarn(LOG_TAG, "OpenClaw home parent directory is null");
+            return false;
+        }
+
+        File stagingDir = createOpenclawRestoreStagingDirectory(homeDir);
+        if (stagingDir == null) {
+            return false;
+        }
+
+        if (!stagingDir.exists() && !stagingDir.mkdirs()) {
+            Logger.logWarn(LOG_TAG, "Failed to create restore staging directory: " + stagingDir.getAbsolutePath());
+            return false;
+        }
+
+        File[] restoreTargets = {openclawDir, botdropDir};
+        File[] rollbackDirs = new File[restoreTargets.length];
+        boolean[] restoredTargetExists = new boolean[restoreTargets.length];
+        boolean restoreSucceeded = false;
+        try {
+            if (!extractOpenclawBackupToDirectory(backupFile, stagingDir)) {
+                return false;
+            }
+
+            boolean hasAnyRestoredDirectory = false;
+            for (int i = 0; i < restoreTargets.length; i++) {
+                File targetDir = restoreTargets[i];
+                File restoredSourceDir = new File(stagingDir, targetDir.getName());
+                if (!restoredSourceDir.exists()) {
+                    continue;
+                }
+
+                hasAnyRestoredDirectory = true;
+                restoredTargetExists[i] = true;
+
+                if (targetDir.exists()) {
+                    rollbackDirs[i] = createOpenclawRollbackDirectory(homeDir, targetDir.getName());
+                    if (rollbackDirs[i] == null) {
+                        Logger.logWarn(LOG_TAG, "Failed to create backup directory for restore of " + targetDir.getName());
+                        return false;
+                    }
+
+                    if (!targetDir.renameTo(rollbackDirs[i])) {
+                        Logger.logWarn(LOG_TAG, "Failed to backup current " + targetDir.getName() + " directory before restore");
+                        return false;
+                    }
+                }
+
+                if (!restoredSourceDir.renameTo(targetDir)) {
+                    Logger.logWarn(LOG_TAG, "Failed to move restored " + targetDir.getName() + " directory into place");
+                    return false;
+                }
+            }
+
+            if (!hasAnyRestoredDirectory) {
+                Logger.logWarn(LOG_TAG, "No restorable data directory found in backup");
+                return false;
+            }
+
+            for (int i = 0; i < rollbackDirs.length; i++) {
+                if (rollbackDirs[i] != null && rollbackDirs[i].exists()) {
+                    if (!deleteRecursively(rollbackDirs[i])) {
+                        Logger.logWarn(LOG_TAG, "Failed to delete previous backup backup directory for " + restoreTargets[i].getName());
+                    }
+                }
+            }
+
+            restoreSucceeded = true;
+            return true;
+        } catch (Exception e) {
+            Logger.logWarn(LOG_TAG, "Failed to restore OpenClaw backup from " + backupFile.getAbsolutePath() + ": " + e.getMessage());
+            for (int i = 0; i < rollbackDirs.length; i++) {
+                File targetDir = restoreTargets[i];
+                File rollbackDir = rollbackDirs[i];
+                if (rollbackDir == null) {
+                    if (restoredTargetExists[i] && targetDir.exists()) {
+                        deleteRecursively(targetDir);
+                    }
+                    continue;
+                }
+
+                if (targetDir.exists() && !deleteRecursively(targetDir)) {
+                    Logger.logWarn(LOG_TAG, "Failed to clean partially restored " + targetDir.getName() + " directory");
+                }
+
+                if (!rollbackDir.renameTo(targetDir)) {
+                    Logger.logWarn(LOG_TAG, "Failed to rollback " + targetDir.getName() + " directory after restore failure");
+                }
+            }
+            return false;
+        } finally {
+            if (!deleteRecursively(stagingDir)) {
+                Logger.logWarn(LOG_TAG, "Failed to delete restore staging directory: " + stagingDir.getAbsolutePath());
+            }
+        }
+    }
+
+    private boolean applyLegacyOpenclawBackup(@NonNull File backupFile) {
         JSONObject backupPayload = readJsonFromFile(backupFile);
         if (backupPayload == null) {
             return false;
         }
 
+        File openclawDir = getOpenclawHomeDirectory();
+        if (openclawDir == null) {
+            return false;
+        }
+
+        File homeDir = openclawDir.getParentFile();
+        if (homeDir != null && !homeDir.exists() && !homeDir.mkdirs()) {
+            Logger.logWarn(LOG_TAG, "Failed to recreate openclaw home parent: " + homeDir.getAbsolutePath());
+            return false;
+        }
+        if (homeDir == null) {
+            Logger.logWarn(LOG_TAG, "OpenClaw home parent directory is null");
+            return false;
+        }
+
         JSONObject openclawConfig = backupPayload.optJSONObject(OPENCLAW_BACKUP_META_OPENCLAW_CONFIG_KEY);
         JSONObject authProfiles = backupPayload.optJSONObject(OPENCLAW_BACKUP_META_AUTH_PROFILES_KEY);
-        int restoredCount = 0;
-
-        if (openclawConfig != null && writeJsonToFile(new File(OPENCLAW_CONFIG_FILE), openclawConfig)) {
-            restoredCount++;
-        }
-        if (authProfiles != null && writeJsonToFile(new File(OPENCLAW_AUTH_PROFILES_FILE), authProfiles)) {
-            restoredCount++;
+        if (openclawConfig == null && authProfiles == null) {
+            Logger.logWarn(LOG_TAG, "Legacy backup has no recoverable OpenClaw payload");
+            return false;
         }
 
-        return restoredCount > 0;
+        File openclawConfigFile = new File(OPENCLAW_CONFIG_FILE);
+        File authProfilesFile = new File(OPENCLAW_AUTH_PROFILES_FILE);
+        File rollbackDir = null;
+        File targetDir = openclawDir;
+
+        try {
+            if (targetDir.exists()) {
+                rollbackDir = createOpenclawRollbackDirectory(homeDir, OPENCLAW_HOME_FOLDER);
+                if (rollbackDir == null) {
+                    Logger.logWarn(LOG_TAG, "Failed to create backup directory for legacy restore");
+                    return false;
+                }
+                if (!targetDir.renameTo(rollbackDir)) {
+                    Logger.logWarn(LOG_TAG, "Failed to backup current .openclaw directory before legacy restore");
+                    return false;
+                }
+            }
+
+            if (openclawConfig != null && !writeJsonToFile(openclawConfigFile, openclawConfig)) {
+                Logger.logWarn(LOG_TAG, "Failed to restore legacy openclaw.json");
+                return false;
+            }
+
+            if (authProfiles != null && !writeJsonToFile(authProfilesFile, authProfiles)) {
+                Logger.logWarn(LOG_TAG, "Failed to restore legacy auth-profiles.json");
+                return false;
+            }
+
+            if (rollbackDir != null && rollbackDir.exists() && !deleteRecursively(rollbackDir)) {
+                Logger.logWarn(LOG_TAG, "Failed to delete legacy restore backup directory: " + rollbackDir.getAbsolutePath());
+            }
+
+            return true;
+        } catch (Exception e) {
+            Logger.logWarn(LOG_TAG, "Failed to restore legacy OpenClaw backup from " + backupFile.getAbsolutePath() + ": " + e.getMessage());
+            if (rollbackDir != null && rollbackDir.exists()) {
+                if (targetDir.exists() && !deleteRecursively(targetDir)) {
+                    Logger.logWarn(LOG_TAG, "Failed to clean partially restored .openclaw directory after legacy restore failure");
+                }
+                if (!rollbackDir.renameTo(targetDir)) {
+                    Logger.logWarn(LOG_TAG, "Failed to rollback .openclaw directory after legacy restore failure");
+                }
+            }
+            return false;
+        }
+    }
+
+    private boolean isLegacyOpenclawBackupFile(@NonNull File backupFile) {
+        return backupFile.getName().endsWith(OPENCLAW_BACKUP_FILE_EXTENSION_JSON);
+    }
+
+    private File createOpenclawRestoreStagingDirectory(@NonNull File homeDir) {
+        for (int suffix = 0; suffix < 10; suffix++) {
+            File stagingDir = new File(homeDir, OPENCLAW_RESTORE_STAGING_DIR_PREFIX + System.currentTimeMillis() + "_" + suffix);
+            if (!stagingDir.exists()) {
+                return stagingDir;
+            }
+        }
+        return null;
+    }
+
+    private File createOpenclawRollbackDirectory(@NonNull File homeDir, @NonNull String targetName) {
+        String prefix = OPENCLAW_HOME_FOLDER.equals(targetName)
+            ? OPENCLAW_RESTORE_BACKUP_DIR_PREFIX
+            : BOTDROP_RESTORE_BACKUP_DIR_PREFIX;
+        for (int suffix = 0; suffix < 10; suffix++) {
+            File rollbackDir = new File(homeDir, prefix + System.currentTimeMillis() + "_" + suffix);
+            if (!rollbackDir.exists()) {
+                return rollbackDir;
+            }
+        }
+        return null;
     }
 
     private String createOpenclawBackupFile() {
-        JSONObject openclawConfig = readJsonFromFile(new File(OPENCLAW_CONFIG_FILE));
-        JSONObject authProfiles = readJsonFromFile(new File(OPENCLAW_AUTH_PROFILES_FILE));
-        if (openclawConfig == null && authProfiles == null) {
+        File homeDir = getOpenclawHomeParentDirectory();
+        if (homeDir == null) {
+            return null;
+        }
+        File openclawDir = getOpenclawHomeDirectory();
+        File botdropDir = getBotdropHomeDirectory();
+        if (!openclawDir.exists() && !botdropDir.exists()) {
             return null;
         }
 
@@ -499,27 +760,20 @@ public class DashboardActivity extends Activity {
             return null;
         }
 
-            File backupFile = new File(
+        File backupFile = new File(
             backupDir,
             OPENCLAW_BACKUP_FILE_PREFIX + formatBackupTimestamp(System.currentTimeMillis()) + OPENCLAW_BACKUP_FILE_EXTENSION
         );
 
         try {
-            JSONObject backupPayload = new JSONObject();
-            backupPayload.put("version", 1);
-            backupPayload.put(OPENCLAW_BACKUP_META_CREATED_AT_KEY, System.currentTimeMillis());
-            backupPayload.put(OPENCLAW_BACKUP_META_OPENCLAW_CONFIG_KEY,
-                openclawConfig == null ? JSONObject.NULL : openclawConfig);
-            backupPayload.put(OPENCLAW_BACKUP_META_AUTH_PROFILES_KEY,
-                authProfiles == null ? JSONObject.NULL : authProfiles);
-
-            try (FileWriter writer = new FileWriter(backupFile)) {
-                writer.write(backupPayload.toString(2));
+            boolean archived = createOpenclawBackupZip(homeDir, backupFile, openclawDir, botdropDir);
+            if (!archived) {
+                return null;
             }
 
             return backupFile.getAbsolutePath();
         } catch (Exception e) {
-            Logger.logError(LOG_TAG, "Failed to write OpenClaw backup: " + e.getMessage());
+            Logger.logError(LOG_TAG, "Failed to create OpenClaw backup: " + e.getMessage());
             return null;
         }
     }
@@ -531,7 +785,9 @@ public class DashboardActivity extends Activity {
         }
 
         File[] candidates = backupDir.listFiles((dir, name) ->
-            name != null && name.startsWith(OPENCLAW_BACKUP_FILE_PREFIX) && name.endsWith(OPENCLAW_BACKUP_FILE_EXTENSION)
+            name != null
+                && name.startsWith(OPENCLAW_BACKUP_FILE_PREFIX)
+                && (name.endsWith(OPENCLAW_BACKUP_FILE_EXTENSION) || name.endsWith(OPENCLAW_BACKUP_FILE_EXTENSION_JSON))
         );
         if (candidates == null || candidates.length == 0) {
             return null;
@@ -550,11 +806,27 @@ public class DashboardActivity extends Activity {
         if (backupFile == null || !backupFile.exists()) {
             return 0L;
         }
-        JSONObject backupPayload = readJsonFromFile(backupFile);
-        if (backupPayload == null) {
-            return backupFile.lastModified();
+
+        String name = backupFile.getName();
+        if (name.startsWith(OPENCLAW_BACKUP_FILE_PREFIX)
+            && (name.endsWith(OPENCLAW_BACKUP_FILE_EXTENSION) || name.endsWith(OPENCLAW_BACKUP_FILE_EXTENSION_JSON))) {
+            String extension = name.endsWith(OPENCLAW_BACKUP_FILE_EXTENSION_JSON)
+                ? OPENCLAW_BACKUP_FILE_EXTENSION_JSON
+                : OPENCLAW_BACKUP_FILE_EXTENSION;
+            String timestampPart = name.substring(
+                OPENCLAW_BACKUP_FILE_PREFIX.length(),
+                name.length() - extension.length()
+            );
+            try {
+                Date parsed = new SimpleDateFormat(OPENCLAW_BACKUP_DATE_PATTERN, Locale.US).parse(timestampPart);
+                if (parsed != null) {
+                    return parsed.getTime();
+                }
+            } catch (Exception ignored) {
+            }
         }
-        return backupPayload.optLong(OPENCLAW_BACKUP_META_CREATED_AT_KEY, backupFile.lastModified());
+
+        return backupFile.lastModified();
     }
 
     private String formatBackupTimestamp(long timeMs) {
@@ -564,8 +836,134 @@ public class DashboardActivity extends Activity {
         return new SimpleDateFormat(OPENCLAW_BACKUP_DATE_PATTERN, Locale.US).format(new Date(timeMs));
     }
 
-    private JSONObject readJsonFromFile(File file) {
-        if (file == null || !file.exists()) {
+    private boolean createOpenclawBackupZip(
+        @NonNull File sourceDir,
+        @NonNull File outputFile,
+        @NonNull File... sourceDataDirectories
+    ) {
+        byte[] buffer = new byte[OPENCLAW_BACKUP_IO_BUFFER_SIZE];
+        try (ZipOutputStream zos = new ZipOutputStream(new BufferedOutputStream(new FileOutputStream(outputFile)))) {
+            boolean hasEntries = false;
+            for (File sourceDataDirectory : sourceDataDirectories) {
+                if (sourceDataDirectory == null || !sourceDataDirectory.exists() || !sourceDataDirectory.isDirectory()) {
+                    continue;
+                }
+                if (!addOpenclawDirectoryEntriesToZip(sourceDir, sourceDataDirectory, zos, buffer)) {
+                    return false;
+                }
+                hasEntries = true;
+            }
+            return hasEntries;
+        } catch (java.io.IOException e) {
+            Logger.logStackTraceWithMessage(LOG_TAG, "Failed to create backup zip", e);
+            return false;
+        }
+    }
+
+    private boolean addOpenclawDirectoryEntriesToZip(
+        @NonNull File sourceDir,
+        @NonNull File current,
+        @NonNull ZipOutputStream zos,
+        @NonNull byte[] buffer
+    ) throws java.io.IOException {
+        if (current.equals(sourceDir)) {
+            return true;
+        }
+
+        String sourcePath = sourceDir.getAbsolutePath();
+        String childPath = current.getAbsolutePath();
+        String relativePath = childPath.equals(sourcePath)
+            ? ""
+            : childPath.substring(sourcePath.length() + 1).replace('\\', '/');
+
+        if (current.isDirectory()) {
+            if (!relativePath.isEmpty()) {
+                ZipEntry dirEntry = new ZipEntry(relativePath + (relativePath.endsWith("/") ? "" : "/"));
+                zos.putNextEntry(dirEntry);
+                zos.closeEntry();
+            }
+            File[] children = current.listFiles();
+            if (children == null) {
+                return true;
+            }
+            for (File child : children) {
+                if (!addOpenclawDirectoryEntriesToZip(sourceDir, child, zos, buffer)) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        String entryName = relativePath;
+        ZipEntry fileEntry = new ZipEntry(entryName);
+        zos.putNextEntry(fileEntry);
+        try (FileInputStream input = new FileInputStream(current)) {
+            int read;
+            while ((read = input.read(buffer)) != -1) {
+                zos.write(buffer, 0, read);
+            }
+        }
+        zos.closeEntry();
+        return true;
+    }
+
+    private boolean extractOpenclawBackupToDirectory(@NonNull File backupFile, @NonNull File homeDir) {
+        byte[] buffer = new byte[OPENCLAW_BACKUP_IO_BUFFER_SIZE];
+        try (ZipInputStream zis = new ZipInputStream(new BufferedInputStream(new FileInputStream(backupFile)))) {
+            ZipEntry entry;
+            boolean restoredAny = false;
+            String homePath = homeDir.getCanonicalPath();
+            String expectedPrefix = homePath + File.separator;
+
+            while ((entry = zis.getNextEntry()) != null) {
+                String relativePath = normalizeOpenclawBackupEntryPath(entry.getName());
+                if (relativePath == null) {
+                    zis.closeEntry();
+                    continue;
+                }
+                restoredAny = true;
+
+                File targetFile = new File(homeDir, relativePath);
+                String targetPath = targetFile.getCanonicalPath();
+                if (!targetPath.equals(homePath) && !targetPath.startsWith(expectedPrefix)) {
+                    Logger.logWarn(LOG_TAG, "Skipping unsafe backup entry: " + entry.getName());
+                    zis.closeEntry();
+                    continue;
+                }
+
+                if (entry.isDirectory() || relativePath.endsWith("/")) {
+                    if (!targetFile.exists() && !targetFile.mkdirs()) {
+                        Logger.logWarn(LOG_TAG, "Failed to create directory from backup: " + targetFile.getAbsolutePath());
+                        return false;
+                    }
+                    zis.closeEntry();
+                    continue;
+                }
+
+                File parentDir = targetFile.getParentFile();
+                if (parentDir != null && !parentDir.exists() && !parentDir.mkdirs()) {
+                    Logger.logWarn(LOG_TAG, "Failed to create parent directory: " + parentDir.getAbsolutePath());
+                    return false;
+                }
+
+                try (FileOutputStream output = new FileOutputStream(targetFile)) {
+                    int read;
+                    while ((read = zis.read(buffer)) != -1) {
+                        output.write(buffer, 0, read);
+                    }
+                }
+                zis.closeEntry();
+            }
+
+            return restoredAny;
+        } catch (Exception e) {
+            Logger.logWarn(LOG_TAG, "Failed to restore OpenClaw backup from " + backupFile.getAbsolutePath() + ": " + e.getMessage());
+            return false;
+        }
+    }
+
+    private JSONObject readJsonFromFile(@NonNull File file) {
+        if (!file.exists()) {
             return null;
         }
 
@@ -577,33 +975,124 @@ public class DashboardActivity extends Activity {
                 sb.append(buffer, 0, read);
             }
             return new JSONObject(sb.toString());
-        } catch (Exception e) {
-            Logger.logWarn(LOG_TAG, "Failed to read JSON from " + file.getAbsolutePath() + ": " + e.getMessage());
+        } catch (IOException | org.json.JSONException e) {
+            Logger.logWarn(LOG_TAG, "Failed to read JSON backup from " + file.getAbsolutePath() + ": " + e.getMessage());
             return null;
         }
     }
 
-    private boolean writeJsonToFile(File target, JSONObject content) {
-        if (target == null || content == null) {
-            return false;
-        }
+    private boolean writeJsonToFile(@NonNull File file, @NonNull JSONObject payload) {
+        try {
+            File parent = file.getParentFile();
+            if (parent != null && !parent.exists() && !parent.mkdirs()) {
+                Logger.logWarn(LOG_TAG, "Failed to create parent directory: " + parent.getAbsolutePath());
+                return false;
+            }
 
-        File parent = target.getParentFile();
-        if (parent != null && !parent.exists() && !parent.mkdirs()) {
-            return false;
-        }
+            try (FileWriter writer = new FileWriter(file)) {
+                writer.write(payload.toString(2));
+            }
 
-        try (FileWriter writer = new FileWriter(target)) {
-            writer.write(content.toString(2));
-            target.setReadable(false, false);
-            target.setReadable(true, true);
-            target.setWritable(false, false);
-            target.setWritable(true, true);
+            file.setReadable(false, false);
+            file.setReadable(true, true);
+            file.setWritable(false, false);
+            file.setWritable(true, true);
             return true;
-        } catch (Exception e) {
-            Logger.logError(LOG_TAG, "Failed to write JSON to " + target.getAbsolutePath() + ": " + e.getMessage());
+        } catch (IOException | org.json.JSONException e) {
+            Logger.logWarn(LOG_TAG, "Failed to write restored OpenClaw file to " + file.getAbsolutePath() + ": " + e.getMessage());
             return false;
         }
+    }
+
+    @Nullable
+    private File getOpenclawHomeDirectory() {
+        return new File(TermuxConstants.TERMUX_HOME_DIR_PATH, OPENCLAW_HOME_FOLDER);
+    }
+
+    private File getBotdropHomeDirectory() {
+        return new File(TermuxConstants.TERMUX_HOME_DIR_PATH, BOTDROP_HOME_FOLDER);
+    }
+
+    private File getOpenclawHomeParentDirectory() {
+        File openclawDir = getOpenclawHomeDirectory();
+        if (openclawDir == null || openclawDir.getParentFile() == null) {
+            return null;
+        }
+        return openclawDir.getParentFile();
+    }
+
+    private boolean deleteRecursively(@NonNull File file) {
+        if (!file.exists()) {
+            return true;
+        }
+
+        Deque<File> stack = new ArrayDeque<>();
+        Deque<File> orderedDelete = new ArrayDeque<>();
+        stack.push(file);
+
+        while (!stack.isEmpty()) {
+            File current = stack.pop();
+            if (!current.exists()) {
+                continue;
+            }
+            orderedDelete.push(current);
+            if (current.isDirectory()) {
+                File[] children = current.listFiles();
+                if (children == null) {
+                    Logger.logWarn(LOG_TAG, "Failed to list children for " + current.getAbsolutePath());
+                    return false;
+                }
+                for (File child : children) {
+                    stack.push(child);
+                }
+            }
+        }
+
+        while (!orderedDelete.isEmpty()) {
+            File target = orderedDelete.pop();
+            if (!target.delete()) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    @Nullable
+    private String normalizeOpenclawBackupEntryPath(@Nullable String entryName) {
+        if (entryName == null) {
+            return null;
+        }
+
+        String normalized = entryName.replace('\\', '/');
+        while (normalized.startsWith("/")) {
+            normalized = normalized.substring(1);
+        }
+
+        if (normalized.isEmpty()) {
+            return null;
+        }
+
+        if (normalized.equals(".") || normalized.equals("..") || normalized.startsWith("../") || normalized.endsWith("/..") || normalized.contains("/../")) {
+            return null;
+        }
+
+        String[] allowedRoots = new String[]{OPENCLAW_HOME_FOLDER, BOTDROP_HOME_FOLDER};
+        int slashIndex = normalized.indexOf('/');
+        String rootName = slashIndex >= 0 ? normalized.substring(0, slashIndex) : normalized;
+        boolean isAllowedRoot = false;
+        for (String root : allowedRoots) {
+            if (root.equals(rootName)) {
+                isAllowedRoot = true;
+                break;
+            }
+        }
+
+        if (!isAllowedRoot) {
+            return null;
+        }
+
+        return normalized;
     }
 
     private void setButtonEnabled(TextView button, boolean enabled) {
