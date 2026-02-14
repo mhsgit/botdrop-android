@@ -4,10 +4,13 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.ServiceConnection;
+import android.graphics.Typeface;
 import android.os.Build;
 import android.net.Uri;
 import android.os.Bundle;
@@ -15,8 +18,11 @@ import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
 import android.text.TextUtils;
+import android.text.method.ScrollingMovementMethod;
 import android.view.View;
+import android.view.ViewGroup;
 import android.widget.Button;
+import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -53,6 +59,23 @@ public class DashboardActivity extends Activity {
     private static final String MODEL_LIST_COMMAND = "openclaw models list --all --plain";
     private static final String MODEL_PREFS_NAME = "openclaw_model_cache_v1";
     private static final String MODEL_CACHE_KEY_PREFIX = "models_by_version_";
+    private static final int GATEWAY_LOG_TAIL_LINES = 300;
+    private static final int GATEWAY_DEBUG_LOG_TAIL_LINES = 120;
+    private static final String GATEWAY_LOG_FILE = TermuxConstants.TERMUX_HOME_DIR_PATH + "/.openclaw/gateway.log";
+    private static final String GATEWAY_DEBUG_LOG_FILE = TermuxConstants.TERMUX_HOME_DIR_PATH + "/.openclaw/gateway-debug.log";
+    private static final String VIEW_OPENCLAW_LOG_COMMAND =
+            "if [ -f " + GATEWAY_LOG_FILE + " ]; then\n" +
+            "  echo '=== OpenClaw gateway.log (tail " + GATEWAY_LOG_TAIL_LINES + " lines) ===';\n" +
+            "  tail -n " + GATEWAY_LOG_TAIL_LINES + " " + GATEWAY_LOG_FILE + "\n" +
+            "else\n" +
+            "  echo 'No gateway.log at " + GATEWAY_LOG_FILE + "'\n" +
+            "fi\n" +
+            "if [ -f " + GATEWAY_DEBUG_LOG_FILE + " ]; then\n" +
+            "  echo '\\n=== OpenClaw gateway-debug.log (tail " + GATEWAY_DEBUG_LOG_TAIL_LINES + " lines) ===';\n" +
+            "  tail -n " + GATEWAY_DEBUG_LOG_TAIL_LINES + " " + GATEWAY_DEBUG_LOG_FILE + "\n" +
+            "else\n" +
+            "  echo '\\nNo gateway-debug.log at " + GATEWAY_DEBUG_LOG_FILE + "'\n" +
+            "fi\n";
 
     private TextView mStatusText;
     private TextView mUptimeText;
@@ -71,6 +94,7 @@ public class DashboardActivity extends Activity {
     private TextView mGatewayErrorText;
     private TextView mOpenclawVersionText;
     private TextView mOpenclawCheckUpdateButton;
+    private TextView mOpenclawLogButton;
     private String mOpenclawLatestUpdateVersion;
     private AlertDialog mOpenclawUpdateDialog;
     private boolean mOpenclawManualCheckRequested;
@@ -157,6 +181,10 @@ public class DashboardActivity extends Activity {
         mOpenclawCheckUpdateButton = findViewById(R.id.btn_check_openclaw_update);
         if (mOpenclawCheckUpdateButton != null) {
             mOpenclawCheckUpdateButton.setOnClickListener(v -> forceCheckOpenclawUpdate());
+        }
+        mOpenclawLogButton = findViewById(R.id.btn_view_openclaw_log);
+        if (mOpenclawLogButton != null) {
+            mOpenclawLogButton.setOnClickListener(v -> showOpenclawLog());
         }
 
         // Load channel info
@@ -605,6 +633,80 @@ public class DashboardActivity extends Activity {
         ConfigTemplateCache.saveTemplate(DashboardActivity.this, template);
 
         restartGateway();
+    }
+
+    private void showOpenclawLog() {
+        if (!mBound || mBotDropService == null) {
+            Toast.makeText(this, "Service not connected", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        if (mOpenclawLogButton != null) {
+            mOpenclawLogButton.setEnabled(false);
+        }
+
+        mBotDropService.executeCommand(VIEW_OPENCLAW_LOG_COMMAND, result -> {
+            if (mOpenclawLogButton != null) {
+                mOpenclawLogButton.setEnabled(true);
+            }
+
+            String logText = result != null ? result.stdout : null;
+            if (result == null) {
+                logText = "Failed to read OpenClaw logs.";
+            } else if (!result.success) {
+                StringBuilder fallback = new StringBuilder();
+                if (!TextUtils.isEmpty(result.stderr)) {
+                    fallback.append(result.stderr.trim());
+                }
+                if (!TextUtils.isEmpty(result.stdout)) {
+                    if (fallback.length() > 0) {
+                        fallback.append("\n\n");
+                    }
+                    fallback.append(result.stdout.trim());
+                }
+                logText = fallback.toString();
+                if (TextUtils.isEmpty(logText)) {
+                    logText = "Failed to read OpenClaw logs. Exit code: " + result.exitCode;
+                }
+            }
+
+            if (TextUtils.isEmpty(logText)) {
+                logText = "No log output available.";
+            }
+
+            final String finalLogText = logText;
+            TextView logView = new TextView(this);
+            logView.setText(finalLogText);
+            logView.setTextSize(11f);
+            logView.setTypeface(Typeface.MONOSPACE);
+            logView.setTextColor(ContextCompat.getColor(this, R.color.botdrop_on_background));
+            logView.setMovementMethod(ScrollingMovementMethod.getInstance());
+            logView.setPadding(16, 16, 16, 16);
+
+            ScrollView scrollContainer = new ScrollView(this);
+            scrollContainer.addView(logView, new ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT));
+
+            new AlertDialog.Builder(this)
+                .setTitle("OpenClaw Gateway Log")
+                .setView(scrollContainer)
+                .setNeutralButton("Copy", (dialog, which) -> copyToClipboard(finalLogText))
+                .setPositiveButton("Close", null)
+                .show();
+        });
+    }
+
+    private void copyToClipboard(String content) {
+        ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+        if (clipboard == null) {
+            Toast.makeText(this, "Clipboard unavailable", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        String textToCopy = content == null ? "" : content;
+        ClipData clip = ClipData.newPlainText("OpenClaw Gateway Log", textToCopy);
+        clipboard.setPrimaryClip(clip);
+        Toast.makeText(this, "Log copied", Toast.LENGTH_SHORT).show();
     }
 
     // --- OpenClaw update ---

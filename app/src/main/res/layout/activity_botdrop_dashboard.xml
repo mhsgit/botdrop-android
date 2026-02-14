@@ -156,6 +156,16 @@
                         android:textColor="@color/botdrop_accent"
                         android:paddingStart="8dp"
                         android:paddingEnd="0dp" />
+
+                    <TextView
+                        android:id="@+id/btn_view_openclaw_log"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="View log"
+                        android:textSize="13sp"
+                        android:textColor="@color/botdrop_accent"
+                        android:paddingStart="12dp"
+                        android:paddingEnd="0dp" />
                 </LinearLayout>
         </LinearLayout>
 
