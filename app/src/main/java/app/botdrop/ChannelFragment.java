@@ -19,6 +19,7 @@ import android.widget.Toast;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.fragment.app.Fragment;
+import androidx.appcompat.app.AlertDialog;
 
 import com.termux.R;
 import com.termux.shared.logger.Logger;
@@ -40,6 +41,7 @@ public class ChannelFragment extends Fragment {
     private EditText mTokenInput;
     private EditText mUserIdInput;
     private Button mConnectButton;
+    private Button mSkipButton;
     private TextView mErrorMessage;
 
     private BotDropService mService;
@@ -77,11 +79,13 @@ public class ChannelFragment extends Fragment {
         mTokenInput = view.findViewById(R.id.channel_token_input);
         mUserIdInput = view.findViewById(R.id.channel_userid_input);
         mConnectButton = view.findViewById(R.id.channel_connect_button);
+        mSkipButton = view.findViewById(R.id.channel_skip_button);
         mErrorMessage = view.findViewById(R.id.channel_error_message);
 
         // Setup click handlers
         mOpenSetupBotButton.setOnClickListener(v -> openSetupBot());
         mConnectButton.setOnClickListener(v -> connect());
+        mSkipButton.setOnClickListener(v -> skipSetup());
 
         Logger.logDebug(LOG_TAG, "ChannelFragment view created");
     }
@@ -219,6 +223,28 @@ public class ChannelFragment extends Fragment {
                 }
             });
         });
+    }
+
+    private void skipSetup() {
+        if (!isAdded() || getActivity() == null || getActivity().isFinishing()) {
+            return;
+        }
+
+        new AlertDialog.Builder(requireContext())
+            .setTitle("Skip Telegram setup?")
+            .setMessage("If you skip now, Telegram will remain unconfigured. "
+                + "You can configure other channels later from the OpenClaw Web UI.")
+            .setPositiveButton("Skip", (dialog, which) -> {
+                Logger.logInfo(LOG_TAG, "User skipped Telegram setup");
+
+                SetupActivity activity = (SetupActivity) getActivity();
+                if (activity == null || activity.isFinishing()) {
+                    return;
+                }
+                activity.goToNextStep();
+            })
+            .setNegativeButton("Cancel", (dialog, which) -> dialog.dismiss())
+            .show();
     }
 
     private void showError(String message) {
