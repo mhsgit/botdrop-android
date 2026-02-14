@@ -5,6 +5,8 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.text.TextUtils;
 import android.widget.TextView;
+import android.view.Gravity;
+import android.graphics.Typeface;
 
 import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
@@ -50,15 +52,43 @@ public class ModelListAdapter extends RecyclerView.Adapter<ModelListAdapter.View
             return;
         }
 
+        holder.itemView.setEnabled(!model.isSectionHeader);
+        holder.itemView.setClickable(!model.isSectionHeader);
+        holder.itemView.setFocusable(!model.isSectionHeader);
+
         String provider = model.provider == null ? "" : model.provider;
         String modelName = model.model == null ? "" : model.model;
-        boolean isProviderRow = TextUtils.isEmpty(model.model);
+        boolean isProviderRow = TextUtils.isEmpty(model.model) && !model.isSectionHeader;
+        boolean isSectionHeader = model.isSectionHeader;
+        if (holder.modelSectionDivider != null) {
+            holder.modelSectionDivider.setVisibility(isSectionHeader && position > 0 ? View.VISIBLE : View.GONE);
+        }
 
+        if (isSectionHeader) {
+            holder.itemView.setBackgroundResource(android.R.color.transparent);
+            holder.modelBadge.setVisibility(View.GONE);
+            holder.modelArrow.setVisibility(View.GONE);
+            holder.modelMeta.setVisibility(View.GONE);
+            holder.itemView.setOnClickListener(null);
+            holder.modelName.setGravity(Gravity.START);
+            holder.modelName.setTypeface(holder.modelName.getTypeface(), Typeface.BOLD);
+            holder.modelName.setText(provider);
+            return;
+        }
+
+        holder.modelBadge.setVisibility(View.VISIBLE);
+        holder.modelArrow.setVisibility(View.VISIBLE);
+        holder.modelMeta.setVisibility(View.VISIBLE);
+        holder.modelName.setGravity(Gravity.NO_GRAVITY);
         String title;
         String meta;
         if (isProviderRow) {
             title = provider;
-            meta = "Select provider and choose model";
+            if (!TextUtils.isEmpty(model.statusText)) {
+                meta = model.statusText;
+            } else {
+                meta = "Select provider and choose model";
+            }
         } else {
             title = modelName;
             meta = provider;
@@ -87,15 +117,19 @@ public class ModelListAdapter extends RecyclerView.Adapter<ModelListAdapter.View
     }
 
     static class ViewHolder extends RecyclerView.ViewHolder {
+        View modelSectionDivider;
         TextView modelName;
         TextView modelMeta;
         TextView modelBadge;
+        TextView modelArrow;
 
         ViewHolder(View itemView) {
             super(itemView);
+            modelSectionDivider = itemView.findViewById(R.id.model_section_divider);
             modelName = itemView.findViewById(R.id.model_name);
             modelMeta = itemView.findViewById(R.id.model_meta);
             modelBadge = itemView.findViewById(R.id.model_badge);
+            modelArrow = itemView.findViewById(R.id.model_arrow);
         }
     }
 }

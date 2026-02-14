@@ -10,7 +10,6 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.PowerManager;
-import android.os.Environment;
 import android.provider.Settings;
 import android.view.View;
 import android.widget.Button;
@@ -22,7 +21,6 @@ import androidx.core.app.NotificationManagerCompat;
 
 import com.termux.R;
 import com.termux.app.TermuxInstaller;
-import com.termux.shared.android.PermissionUtils;
 import com.termux.shared.logger.Logger;
 
 import org.json.JSONObject;
@@ -46,8 +44,6 @@ public class BotDropLauncherActivity extends Activity {
     private static final String LOG_TAG = "BotDropLauncherActivity";
     private static final int REQUEST_CODE_NOTIFICATION_SETTINGS = 1001;
     private static final int REQUEST_CODE_BATTERY_OPTIMIZATION = 1002;
-    private static final int REQUEST_CODE_OPENCLAW_STORAGE_PERMISSION = 3003;
-    private static final String OPENCLAW_BACKUP_DIRECTORY = "BotDrop/openclaw";
     private static final String PREFS_NAME = "botdrop_launcher";
     private static final String PREF_ONBOARDING_CONTINUE = "onboarding_continue_clicked";
 
@@ -91,8 +87,6 @@ public class BotDropLauncherActivity extends Activity {
         // Upgrade migration: clean deprecated keys from existing OpenClaw config.
         BotDropConfig.sanitizeLegacyConfig();
 
-        requestOpenclawStoragePermission();
-
         // Trigger update check early (results stored for Dashboard to display)
         UpdateChecker.check(this, null);
 
@@ -127,7 +121,7 @@ public class BotDropLauncherActivity extends Activity {
         // the user must tap Continue to start bootstrap/setup work.
         showWelcomePhase();
         updatePermissionStatus();
-        requestOpenclawStoragePermission();
+        // Continue with cached permission status and setup flow.
     }
 
     @Override
@@ -274,27 +268,7 @@ public class BotDropLauncherActivity extends Activity {
                 Logger.logWarn(LOG_TAG, "Battery optimization exemption denied");
             }
             updatePermissionStatus();
-        } else if (requestCode == REQUEST_CODE_OPENCLAW_STORAGE_PERMISSION) {
-            Logger.logInfo(LOG_TAG, "Returned from storage permission request for OpenClaw backup");
         }
-    }
-
-    private void requestOpenclawStoragePermission() {
-        if (PermissionUtils.checkAndRequestLegacyOrManageExternalStoragePermissionIfPathOnPrimaryExternalStorage(
-            this,
-            getOpenclawBackupDirectory().getAbsolutePath(),
-            REQUEST_CODE_OPENCLAW_STORAGE_PERMISSION,
-            true
-        )) {
-            Logger.logInfo(LOG_TAG, "Storage permission already granted for OpenClaw backup");
-        } else {
-            Logger.logInfo(LOG_TAG, "Requested storage permission for OpenClaw backup");
-        }
-    }
-
-    private File getOpenclawBackupDirectory() {
-        File documentsDir = Environment.getExternalStorageDirectory();
-        return new File(documentsDir, OPENCLAW_BACKUP_DIRECTORY);
     }
 
     // --- UI updates ---

@@ -11,6 +11,8 @@ public class ModelInfo {
     public String input;        // "text+image"
     public String context;      // "1024k"
     public boolean isDefault;   // has "default" tag
+    public String statusText;   // Optional label for provider rows (e.g. configured/unconfigured)
+    public boolean isSectionHeader;
 
     public ModelInfo(String fullName) {
         this.fullName = fullName;
