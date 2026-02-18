@@ -56,6 +56,7 @@ export JAVA_HOME=/opt/homebrew/opt/openjdk@17
 ## Project Structure
 
 - **Android App:** `app/` - Main BotDrop Android application
+- **orb-eye:** `orb-eye/` - Accessibility service module for in-app control (read screen, click, input, open apps). HTTP API on port 7333; OpenClaw calls it via `orb.sh` in `~/bin`.
 - **Termux Core:** `termux-shared/`, `terminal-*` - Forked from Termux
 - **Version API:** `worker/` - Cloudflare Worker for version checking
 - **Documentation:** `docs/` - Design docs, plans, troubleshooting guides
@@ -122,13 +123,21 @@ See: `docs/troubleshooting/2026-02-09-telegram-fetch-ipv6-issue.md`
 }
 ```
 
+## Orb Eye (无障碍服务)
+
+- **Module:** `orb-eye/` — Android library providing `OrbAccessibilityService` (HTTP server on `127.0.0.1:7333`).
+- **App integration:** `app` depends on `orb-eye`; launcher has "无障碍服务" entry; `app/src/main/assets/orb.sh` is copied to `~/bin/orb.sh` by `BotDropService.ensureOrbSh()` so OpenClaw can `exec orb.sh screen|click|tap|setText|back|home|...`.
+- **OpenClaw skill:** `docs/orb-eye-skill-SKILL.md` and `docs/howto-telegram-orb-eye.md` describe how to enable the orb-eye skill and use it from Telegram.
+
 ## Related Documentation
 
 - `CONTRIBUTING.md` - Contribution guidelines
 - `README.md` - Project overview
 - `docs/design.md` - Architecture design (Chinese)
+- `docs/howto-telegram-orb-eye.md` - Orb Eye + Telegram setup
+- `docs/orb-eye-skill-SKILL.md` - OpenClaw skill content for orb-eye
 - `docs/troubleshooting/` - Troubleshooting guides
 
 ---
 
-_Last updated: 2026-02-09_
+_Last updated: 2026-02-18_

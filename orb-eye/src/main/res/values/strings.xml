@@ -1,0 +1,3 @@
+<resources>
+    <string name="service_description">Orb AI assistant screen control service. Provides UI tree access and interaction via local HTTP API.</string>
+</resources>

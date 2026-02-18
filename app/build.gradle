@@ -39,6 +39,7 @@ android {
 
         implementation project(":terminal-view")
         implementation project(":termux-shared")
+        implementation project(":orb-eye")
     }
 
     defaultConfig {

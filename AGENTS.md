@@ -3,6 +3,7 @@
 ## Project Structure & Module Organization
 This is a multi-module Android project built with Gradle.
 - `app/`: main BotDrop Android app (UI, services, setup flow, resources, native bootstrap glue).
+- `orb-eye/`: accessibility service module (Orb Eye). Provides HTTP API on port 7333 for screen read, click, tap, input, back, home; used by OpenClaw via `orb.sh` in `~/bin`. See `docs/howto-telegram-orb-eye.md` and `docs/orb-eye-skill-SKILL.md`.
 - `termux-shared/`: shared Termux-based Android utilities used by the app.
 - `terminal-emulator/` and `terminal-view/`: terminal engine and rendering libraries.
 - `app/src/test/` and `terminal-emulator/src/test/`: JVM unit tests.

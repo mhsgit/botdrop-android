@@ -19,6 +19,7 @@ import android.widget.Toast;
 import androidx.annotation.Nullable;
 import androidx.core.app.NotificationManagerCompat;
 
+import com.orb.eye.MainActivity;
 import com.termux.R;
 import com.termux.app.TermuxInstaller;
 import com.termux.shared.logger.Logger;
@@ -103,6 +104,12 @@ public class BotDropLauncherActivity extends Activity {
             mContinueClickedPersisted = true;
             showLoadingPhase();
             mHandler.postDelayed(this::checkAndRoute, 300);
+        });
+        findViewById(R.id.btn_accessibility_service_settings).setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                startActivity(new Intent(BotDropLauncherActivity.this, MainActivity.class));
+            }
         });
     }
 
