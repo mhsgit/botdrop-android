@@ -1,18 +1,24 @@
 package app.botdrop;
 
 import android.app.Service;
+import android.content.Context;
 import android.content.Intent;
 import android.os.Binder;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
 
+import com.termux.app.TermuxInstaller;
 import com.termux.shared.logger.Logger;
 import com.termux.shared.termux.TermuxConstants;
 
 import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.OutputStream;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -46,6 +52,7 @@ public class BotDropService extends Service {
     public void onCreate() {
         super.onCreate();
         Logger.logDebug(LOG_TAG, "onCreate");
+        mExecutor.execute(this::ensureOrbSh);
     }
 
     @Override
@@ -130,17 +137,17 @@ public class BotDropService extends Service {
         StringBuilder stderr = new StringBuilder();
         int exitCode = -1;
         Process process = null;
-        java.io.File tmpScript = null;
+        File tmpScript = null;
 
         try {
             // Write command to temp script file (same approach as installOpenclaw —
             // ProcessBuilder with script files works reliably, bash -c does not)
-            java.io.File tmpDir = new java.io.File(TermuxConstants.TERMUX_TMP_PREFIX_DIR_PATH);
+            File tmpDir = new File(TermuxConstants.TERMUX_TMP_PREFIX_DIR_PATH);
             if (!tmpDir.exists()) tmpDir.mkdirs();
-            tmpScript = new java.io.File(tmpDir,
+            tmpScript = new File(tmpDir,
                 "cmd_" + System.currentTimeMillis() + ".sh");
             try (java.io.FileWriter fw = new java.io.FileWriter(tmpScript)) {
-                fw.write("#!" + com.termux.shared.termux.TermuxConstants.TERMUX_BIN_PREFIX_DIR_PATH + "/bash\n");
+                fw.write("#!" + TermuxConstants.TERMUX_BIN_PREFIX_DIR_PATH + "/bash\n");
                 fw.write(command);
                 fw.write("\n");
             }
@@ -151,7 +158,7 @@ public class BotDropService extends Service {
 
             pb.environment().put("PREFIX", TermuxConstants.TERMUX_PREFIX_DIR_PATH);
             pb.environment().put("HOME", TermuxConstants.TERMUX_HOME_DIR_PATH);
-            pb.environment().put("PATH", TermuxConstants.TERMUX_BIN_PREFIX_DIR_PATH + ":" + System.getenv("PATH"));
+            pb.environment().put("PATH", TermuxConstants.TERMUX_HOME_DIR_PATH + "/bin:" + TermuxConstants.TERMUX_BIN_PREFIX_DIR_PATH + ":" + System.getenv("PATH"));
             pb.environment().put("TMPDIR", TermuxConstants.TERMUX_TMP_PREFIX_DIR_PATH);
             // Set SSL_CERT_FILE for Node.js fetch to find CA certificates
             pb.environment().put("SSL_CERT_FILE", TermuxConstants.TERMUX_PREFIX_DIR_PATH + "/etc/tls/cert.pem");
@@ -218,8 +225,17 @@ public class BotDropService extends Service {
         final String INSTALL_SCRIPT = TermuxConstants.TERMUX_PREFIX_DIR_PATH + "/share/botdrop/install.sh";
 
         mExecutor.execute(() -> {
+            // Regenerate install.sh so existing users get script fixes (e.g. ENOTEMPTY cleanup)
+            String openclawVersion = getApplicationContext()
+                .getSharedPreferences("botdrop_settings", Context.MODE_PRIVATE)
+                .getString("openclaw_install_version", "openclaw@latest");
+            TermuxInstaller.createBotDropScripts(openclawVersion);
+
+            // Override invalid APT::Default-Release (e.g. "bionic") from bootstrap so openclaw-pkg/apt don't fail
+            ensureAptDefaultReleaseOverride();
+
             // Verify install script exists
-            if (!new java.io.File(INSTALL_SCRIPT).exists()) {
+            if (!new File(INSTALL_SCRIPT).exists()) {
                 mHandler.post(() -> callback.onError(
                     "Install script not found at " + INSTALL_SCRIPT +
                     "\nBootstrap may be incomplete."
@@ -236,7 +252,7 @@ public class BotDropService extends Service {
 
                 pb.environment().put("PREFIX", TermuxConstants.TERMUX_PREFIX_DIR_PATH);
                 pb.environment().put("HOME", TermuxConstants.TERMUX_HOME_DIR_PATH);
-                pb.environment().put("PATH", TermuxConstants.TERMUX_BIN_PREFIX_DIR_PATH + ":" + System.getenv("PATH"));
+                pb.environment().put("PATH", TermuxConstants.TERMUX_HOME_DIR_PATH + "/bin:" + TermuxConstants.TERMUX_BIN_PREFIX_DIR_PATH + ":" + System.getenv("PATH"));
                 pb.environment().put("TMPDIR", TermuxConstants.TERMUX_TMP_PREFIX_DIR_PATH);
                 pb.environment().put("SSL_CERT_FILE", TermuxConstants.TERMUX_PREFIX_DIR_PATH + "/etc/tls/cert.pem");
                 pb.redirectErrorStream(true);
@@ -325,7 +341,7 @@ public class BotDropService extends Service {
      * Check if bootstrap (Node.js) is installed
      */
     public static boolean isBootstrapInstalled() {
-        return new java.io.File(TermuxConstants.TERMUX_BIN_PREFIX_DIR_PATH + "/node").exists();
+        return new File(TermuxConstants.TERMUX_BIN_PREFIX_DIR_PATH + "/node").exists();
     }
 
     /**
@@ -333,7 +349,7 @@ public class BotDropService extends Service {
      */
     public static boolean isOpenclawInstalled() {
         // Check if the openclaw binary exists and is executable
-        java.io.File binary = new java.io.File(TermuxConstants.TERMUX_BIN_PREFIX_DIR_PATH + "/openclaw");
+        File binary = new File(TermuxConstants.TERMUX_BIN_PREFIX_DIR_PATH + "/openclaw");
         return binary.exists() && binary.canExecute();
     }
 
@@ -342,12 +358,12 @@ public class BotDropService extends Service {
      */
     public static String getOpenclawVersion() {
         try {
-            java.io.File packageJson = new java.io.File(
+            File packageJson = new File(
                 TermuxConstants.TERMUX_PREFIX_DIR_PATH + "/lib/node_modules/openclaw/package.json"
             );
             if (packageJson.exists()) {
                 // Use try-with-resources to avoid resource leak
-                try (java.io.BufferedReader reader = new java.io.BufferedReader(
+                try (BufferedReader reader = new BufferedReader(
                     new java.io.FileReader(packageJson)
                 )) {
                     StringBuilder content = new StringBuilder();
@@ -371,7 +387,7 @@ public class BotDropService extends Service {
      * Check if OpenClaw config exists
      */
     public static boolean isOpenclawConfigured() {
-        return new java.io.File(TermuxConstants.TERMUX_HOME_DIR_PATH + "/.openclaw/openclaw.json").exists();
+        return new File(TermuxConstants.TERMUX_HOME_DIR_PATH + "/.openclaw/openclaw.json").exists();
     }
 
     /**
@@ -381,7 +397,7 @@ public class BotDropService extends Service {
     private String withTermuxEnv(String command) {
         return "export HOME=" + TermuxConstants.TERMUX_HOME_DIR_PATH + " && " +
                "export PREFIX=" + TermuxConstants.TERMUX_PREFIX_DIR_PATH + " && " +
-               "export PATH=$PREFIX/bin:$PATH && " +
+               "export PATH=$HOME/bin:$PREFIX/bin:$PATH && " +
                "export TMPDIR=$PREFIX/tmp && " +
                "export SSL_CERT_FILE=$PREFIX/etc/tls/cert.pem && " +
                "export NODE_OPTIONS=--dns-result-order=ipv4first && " +
@@ -396,7 +412,7 @@ public class BotDropService extends Service {
     private String withTermuxChroot(String openclawArgs) {
         return "export HOME=" + TermuxConstants.TERMUX_HOME_DIR_PATH + " && " +
                "export PREFIX=" + TermuxConstants.TERMUX_PREFIX_DIR_PATH + " && " +
-               "export PATH=$PREFIX/bin:$PATH && " +
+               "export PATH=$HOME/bin:$PREFIX/bin:$PATH && " +
                "export TMPDIR=$PREFIX/tmp && " +
                "export SSL_CERT_FILE=$PREFIX/etc/tls/cert.pem && " +
                "export NODE_OPTIONS=--dns-result-order=ipv4first && " +
@@ -407,6 +423,78 @@ public class BotDropService extends Service {
 
     private static final String GATEWAY_PID_FILE = TermuxConstants.TERMUX_HOME_DIR_PATH + "/.openclaw/gateway.pid";
     private static final String GATEWAY_LOG_FILE = TermuxConstants.TERMUX_HOME_DIR_PATH + "/.openclaw/gateway.log";
+    private static final String HOME_BIN_DIR = TermuxConstants.TERMUX_HOME_DIR_PATH + "/bin";
+
+    /**
+     * Copy bundled orb.sh to ~/bin/orb.sh and make it executable so OpenClaw/exec can
+     * call it to drive Orb Eye (accessibility HTTP API). Called before starting the gateway.
+     */
+    private void ensureOrbSh() {
+        File binDir = new File(TermuxConstants.TERMUX_HOME_DIR_PATH, "bin");
+        if (!binDir.exists() && !binDir.mkdirs()) {
+            Logger.logWarn(LOG_TAG, "Could not create ~/bin for orb.sh");
+            return;
+        }
+        File orbSh = new File(binDir, "orb.sh");
+        try (InputStream in = getAssets().open("orb.sh");
+             OutputStream out = new FileOutputStream(orbSh)) {
+            byte[] buf = new byte[4096];
+            int n;
+            while ((n = in.read(buf)) > 0) {
+                out.write(buf, 0, n);
+            }
+        } catch (IOException e) {
+            Logger.logWarn(LOG_TAG, "Could not copy orb.sh to ~/bin: " + e.getMessage());
+            return;
+        }
+        if (!orbSh.setExecutable(true, false)) {
+            Logger.logWarn(LOG_TAG, "Could not set orb.sh executable");
+        }
+        Logger.logDebug(LOG_TAG, "Ensured orb.sh at " + orbSh.getAbsolutePath());
+    }
+
+    /** Stub content for Koffi when native .node is unavailable (e.g. Android). */
+    private static final String KOFFI_STUB_CONTENT =
+        "'use strict';\n"
+        + "// BotDrop stub: Koffi native .node not available on Android; no-op to avoid gateway crash.\n"
+        + "module.exports = function() { return {}; };\n";
+
+    /**
+     * Replace Koffi's index.js with a no-op stub so the gateway does not crash on Android
+     * (native Koffi module is not built for this platform). Idempotent.
+     */
+    private void ensureKoffiStub() {
+        File koffiIndex = new File(
+            TermuxConstants.TERMUX_PREFIX_DIR_PATH
+                + "/lib/node_modules/openclaw/node_modules/koffi/index.js");
+        if (!koffiIndex.exists()) {
+            return;
+        }
+        try (FileOutputStream out = new FileOutputStream(koffiIndex)) {
+            out.write(KOFFI_STUB_CONTENT.getBytes());
+        } catch (IOException e) {
+            Logger.logWarn(LOG_TAG, "Could not stub Koffi: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Write APT override so bootstrap's invalid APT::Default-Release (e.g. "bionic") does not
+     * break openclaw-pkg/apt. Must run before any shell that might source profile and run apt.
+     */
+    private void ensureAptDefaultReleaseOverride() {
+        File confDir = new File(TermuxConstants.TERMUX_PREFIX_DIR_PATH + "/etc/apt/apt.conf.d");
+        if (!confDir.exists() && !confDir.mkdirs()) {
+            Logger.logWarn(LOG_TAG, "Could not create apt.conf.d for Default-Release override");
+            return;
+        }
+        File override = new File(confDir, "99-botdrop-apt.conf");
+        String line = "APT::Default-Release \"\";\n";
+        try (FileOutputStream out = new FileOutputStream(override)) {
+            out.write(line.getBytes());
+        } catch (IOException e) {
+            Logger.logWarn(LOG_TAG, "Could not write APT Default-Release override: " + e.getMessage());
+        }
+    }
 
     public void startGateway(CommandCallback callback) {
         // Ensure legacy config keys are repaired right before starting the gateway.
@@ -421,6 +509,7 @@ public class BotDropService extends Service {
         // stdout still goes back to Java for success/error reporting.
         String cmd =
             "mkdir -p " + logDir + "\n" +
+            "mkdir -p " + HOME_BIN_DIR + "\n" +
             "exec 2>" + debugLog + "\n" +
             "set -x\n" +
             "echo \"date: $(date)\" >&2\n" +
@@ -440,7 +529,7 @@ public class BotDropService extends Service {
             "echo '' > " + GATEWAY_LOG_FILE + "\n" +
             "export HOME=" + home + "\n" +
             "export PREFIX=" + prefix + "\n" +
-            "export PATH=$PREFIX/bin:$PATH\n" +
+            "export PATH=$HOME/bin:$PREFIX/bin:$PATH\n" +
             "export TMPDIR=$PREFIX/tmp\n" +
             "export SSL_CERT_FILE=$PREFIX/etc/tls/cert.pem\n" +
             "export NODE_OPTIONS=--dns-result-order=ipv4first\n" +
@@ -467,7 +556,12 @@ public class BotDropService extends Service {
             "  cat " + debugLog + "\n" +
             "  exit 1\n" +
             "fi\n";
-        executeCommand(cmd, callback);
+        mExecutor.execute(() -> {
+            ensureOrbSh();
+            ensureKoffiStub();
+            CommandResult result = executeCommandSync(cmd);
+            mHandler.post(() -> callback.onResult(result));
+        });
     }
 
     public void stopGateway(CommandCallback callback) {
@@ -585,6 +679,8 @@ public class BotDropService extends Service {
                     notifyUpdateError(callback, notified, error);
                     return;
                 }
+
+                ensureKoffiStub();
 
                 // Step 3: Recreate the Android-specific wrapper
                 // npm install overwrites $PREFIX/bin/openclaw with its own shim which

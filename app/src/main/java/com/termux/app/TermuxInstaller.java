@@ -411,6 +411,15 @@ public final class TermuxInstaller {
      */
     public static void createBotDropScripts(String openclawVersion) {
         try {
+            // --- 0. APT override: bootstrap may set APT::Default-Release=bionic (invalid in Termux) ---
+            File aptConfD = new File(TERMUX_PREFIX_DIR_PATH + "/etc/apt/apt.conf.d");
+            if (aptConfD.exists() || aptConfD.mkdirs()) {
+                File override = new File(aptConfD, "99-botdrop-apt.conf");
+                try (FileOutputStream out = new FileOutputStream(override)) {
+                    out.write("APT::Default-Release \"\";\n".getBytes());
+                }
+            }
+
             // --- 1. Create install.sh ---
 
             File botdropDir = new File(TERMUX_PREFIX_DIR_PATH + "/share/botdrop");
@@ -470,10 +479,22 @@ public final class TermuxInstaller {
                 "echo \"BOTDROP_INFO:Node $NODE_V, npm $NPM_V\"\n" +
                 "echo \"BOTDROP_STEP:1:DONE\"\n\n" +
                 "echo \"BOTDROP_STEP:2:START:Installing OpenClaw\"\n" +
-                "rm -rf $PREFIX/lib/node_modules/openclaw 2>/dev/null\n" +
+                "# Robust cleanup: on Android, plain 'rm -rf' can leave dirs that npm then fails to rmdir (ENOTEMPTY).\n" +
+                "# Depth-first delete works around this; then rm -rf any remainder.\n" +
+                "if [ -d \"$PREFIX/lib/node_modules/openclaw\" ]; then\n" +
+                "  find \"$PREFIX/lib/node_modules/openclaw\" -depth -delete 2>/dev/null\n" +
+                "  rm -rf \"$PREFIX/lib/node_modules/openclaw\" 2>/dev/null\n" +
+                "fi\n" +
+                "rm -f $PREFIX/bin/openclaw 2>/dev/null\n" +
                 "NPM_OUTPUT=$(npm install -g " + openclawVersion + " --ignore-scripts --force 2>&1)\n" +
                 "NPM_EXIT=$?\n" +
                 "if [ $NPM_EXIT -eq 0 ]; then\n" +
+                "    # Stub Koffi on Android: native .node not available, avoid gateway crash (openclaw-pkg/native)\n" +
+                "    KOFFI_INDEX=\"$PREFIX/lib/node_modules/openclaw/node_modules/koffi/index.js\"\n" +
+                "    if [ -f \"$KOFFI_INDEX\" ]; then\n" +
+                "      echo 'Stubbing koffi for Android (native module unavailable)...'\n" +
+                "      printf '%s\\n' \"'use strict';\" \"// BotDrop stub: Koffi native .node not available on Android; no-op to avoid crash.\" \"module.exports = function() { return {}; };\" > \"$KOFFI_INDEX\"\n" +
+                "    fi\n" +
                 "    # Create a stable openclaw wrapper (npm-generated shim can be broken on Android/proot)\n" +
                 "    cat > $PREFIX/bin/openclaw <<'BOTDROP_OPENCLAW_WRAPPER'\n" +
                 "#!" + com.termux.shared.termux.TermuxConstants.TERMUX_BIN_PREFIX_DIR_PATH + "/bash\n" +
